@@ -9,7 +9,7 @@ double calc_cosbeta( double x, double y )
     //                   2AB
     
     double n = (x * x) + (y * y) - (LEN_A * LEN_A) - (LEN_B * LEN_B);
-    return n / (2 * LEN_A * LEN_B);
+    return n / (2.0 * LEN_A * LEN_B);
 }
 
 double calc_alpha( double x, double y, double beta, double cosbeta )
