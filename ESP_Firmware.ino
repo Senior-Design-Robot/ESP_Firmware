@@ -8,8 +8,11 @@
 #define SHOULDER_PWM D7
 #define ELBOW_PWM D6
 
-const char* const ssid = "KATY-CORSAIR 0494";        // Enter SSID here
-const char* const password = "0Y46u%02";  //Enter Password here
+//const char* const ssid = "KATY-CORSAIR 0494";        // Enter SSID here
+//const char* const password = "0Y46u%02";  //Enter Password here
+
+const char* const ssid = "SM-G892UAD7";        // Enter SSID here
+const char* const password = "4128498770";  //Enter Password here
 
 const unsigned int LISTEN_PORT = 2462;
 WiFiServer server(LISTEN_PORT);
@@ -18,6 +21,7 @@ const unsigned int PKT_BUF_SIZE = 255;
 char pktBuf[PKT_BUF_SIZE];
 
 PathQueueIterator path;
+CirclePathIterator path2(0,25,10);
 
 Servo shoulder;
 Servo elbow;
@@ -77,7 +81,7 @@ void handlePacket( int pktLength )
 
     // successfully parsed
     Serial.printf("Good data: x = %f, y = %f\n", x, y);
-    path.addMove(x, y);
+    path.addMove(x, y, true);
 }
 
 void setAngles( const struct arm_angles& ang )
@@ -86,7 +90,9 @@ void setAngles( const struct arm_angles& ang )
     float elbowDeg = rad_to_deg(ang.elbow);
 
     shoulder.write(shoulderDeg);
-    elbow.write(elbowDeg);
+    elbow.write(-elbowDeg);
+
+    Serial.printf("Angles set to: s = %f, e = %f\n", shoulderDeg, elbowDeg);
 }
 
 void loop() 
@@ -117,7 +123,7 @@ void loop()
         handlePacket(nRead);
     }
 
-    PathElement nextMove = path.moveNext();
+    PathElement nextMove = path2.moveNext();
     struct arm_angles ang;
     
     switch( nextMove.type )
@@ -132,5 +138,5 @@ void loop()
         break;
     }
 
-    delay(5);
+    //delay(5);
 }

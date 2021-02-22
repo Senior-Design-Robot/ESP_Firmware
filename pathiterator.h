@@ -29,7 +29,7 @@ public:
     virtual PathElement moveNext() = 0;
 
 protected:
-    static constexpr float MAX_DELTA = 0.05;
+    static constexpr float MAX_DELTA = 0.5;
 };
 
 class CirclePathIterator : public IPathIterator
