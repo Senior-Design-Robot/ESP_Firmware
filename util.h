@@ -1,6 +1,7 @@
 #pragma once
 
 #include <stdlib.h>
+#include <cmath>
 
 inline bool parseFloatStrict( const char *str, int len, float& value ) {
     char *parseEnd;

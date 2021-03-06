@@ -7,20 +7,20 @@
 
 struct arm_angles
 {
-    float shoulder;
-    float elbow;
+    double shoulder;
+    double elbow;
 };
 
 double calc_cosbeta( double x, double y );
 double calc_alpha( double x, double y, double beta, double cosbeta );
 struct arm_angles calculate_angles( float x, float y );
 
-inline float rad_to_deg( float radians )
+inline double rad_to_deg( double radians )
 {
     return 180.0 * M_1_PI * radians;
 }
 
-inline float deg_to_rad( float degrees )
+inline double deg_to_rad( double degrees )
 {
     return degrees * (M_PI / 180.0);
 }

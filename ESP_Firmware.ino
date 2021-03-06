@@ -8,11 +8,11 @@
 #define SHOULDER_PWM D7
 #define ELBOW_PWM D6
 
-//const char* const ssid = "KATY-CORSAIR 0494";        // Enter SSID here
-//const char* const password = "0Y46u%02";  //Enter Password here
+const char* const ssid = "KATY-CORSAIR 0494";        // Enter SSID here
+const char* const password = "0Y46u%02";  //Enter Password here
 
-const char* const ssid = "SM-G892UAD7";        // Enter SSID here
-const char* const password = "4128498770";  //Enter Password here
+//const char* const ssid = "SM-G892UAD7";        // Enter SSID here
+//const char* const password = "4128498770";  //Enter Password here
 
 const unsigned int LISTEN_PORT = 2462;
 WiFiServer server(LISTEN_PORT);
@@ -23,6 +23,11 @@ char pktBuf[PKT_BUF_SIZE];
 PathQueueIterator path;
 CirclePathIterator path2(0,25,10);
 
+const int SERV_USEC_MIN = 800;
+const int SERV_USEC_MAX = 2200;
+const double SERV_ANG_MIN = 0.0;
+const double SERV_ANG_MAX = M_PI;
+
 Servo shoulder;
 Servo elbow;
 
@@ -32,7 +37,7 @@ void setup() {
     Serial.begin(9600);
     delay(1000);
     
-    Serial.print("Connecting to ");
+    Serial.print("\nConnecting to ");
     Serial.println(ssid);
     
     //connect to your local wi-fi network
@@ -49,8 +54,8 @@ void setup() {
     Serial.println("WiFi connected");
     server.begin();
 
-    shoulder.attach(SHOULDER_PWM, 700, 2300); // fs5106b limits
-    elbow.attach(ELBOW_PWM, 700, 2300);
+    shoulder.attach(SHOULDER_PWM, SERV_USEC_MIN, SERV_USEC_MAX); // fs5106b limits
+    elbow.attach(ELBOW_PWM, SERV_USEC_MIN, SERV_USEC_MAX);
 
     dockAngles.shoulder = deg_to_rad(180);
     dockAngles.elbow = deg_to_rad(90);
@@ -84,15 +89,26 @@ void handlePacket( int pktLength )
     path.addMove(x, y, true);
 }
 
+static inline int servoAngToUsec( double theta )
+{
+    double norm = (theta - SERV_ANG_MIN) / (SERV_ANG_MAX - SERV_ANG_MIN);
+    return (int)lround(norm * (SERV_USEC_MAX - SERV_USEC_MIN)) + SERV_USEC_MIN;
+}
+
 void setAngles( const struct arm_angles& ang )
 {
-    float shoulderDeg = rad_to_deg(ang.shoulder);
-    float elbowDeg = rad_to_deg(ang.elbow);
+    //float shoulderDeg = rad_to_deg(ang.shoulder);
+    //float elbowDeg = rad_to_deg(ang.elbow);
 
-    shoulder.write(shoulderDeg);
-    elbow.write(-elbowDeg);
+    //shoulder.write(shoulderDeg);
+    //elbow.write(-elbowDeg);
 
-    Serial.printf("Angles set to: s = %f, e = %f\n", shoulderDeg, elbowDeg);
+    int s = servoAngToUsec(ang.shoulder);
+    shoulder.writeMicroseconds(s);
+    int e = servoAngToUsec(-ang.elbow);
+    elbow.writeMicroseconds(e);
+
+    Serial.printf("Servos set to: s = %d, e = %df\n", s, e);
 }
 
 void loop() 
