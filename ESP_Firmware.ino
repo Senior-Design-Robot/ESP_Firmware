@@ -4,6 +4,7 @@
 #include "util.h"
 #include "kinematics.h"
 #include "pathiterator.h"
+#include "dynamixel.h"
 
 #define SHOULDER_PWM D7
 #define ELBOW_PWM D6
@@ -138,6 +139,9 @@ void loop()
 
         handlePacket(nRead);
     }
+
+    // check for responses from dynamixels
+    dynamixel_rcv();
 
     PathElement nextMove = path2.moveNext();
     struct arm_angles ang;

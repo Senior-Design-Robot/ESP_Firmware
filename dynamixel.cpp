@@ -1,53 +1,197 @@
 #include "dynamixel.h"
 
+
 uint8_t shoulder_addr = 1;
 uint8_t elbow_addr = 2;
 
 int xmit_status = 0;
 uint8_t xmit_buf[64];
 
+uint8_t rcv_buf[RCV_BUF_LEN];
+size_t pkt_idx = 0;
+size_t rcv_idx = 0;
 
-void init_buf()
+SoftwareSerial dyn_serial;
+
+DynamixelStatus shoulder_status;
+DynamixelStatus elbow_status;
+
+DynamixelStatus *dynamixels[3];
+
+
+void init_serial()
 {
+    dynamixels[0] = nullptr;
+    dynamixels[1] = &shoulder_status;
+    dynamixels[2] = &elbow_status;
+
     xmit_buf[0] = 0xFF;
     xmit_buf[1] = 0xFF;
     xmit_buf[2] = 0xFD;
     xmit_buf[3] = 0x00; // reserved
+
+    // software serial, 57600 baud, 8 data, 1 stop, no parity, half duplex
+    dyn_serial.begin(57600, SWSERIAL_8N1, 12, 12);
 }
 
-void create_dual_goal_write( int shoulder_ang, int elbow_ang )
+static bool is_valid_header( uint8_t *pkt )
+{
+    if( pkt[0] != 0xFF ) return false;
+    if( pkt[1] != 0xFF ) return false;
+    if( pkt[2] != 0xFD ) return false;
+    if( pkt[3] == 0xFD ) return false; // byte stuffing, not header
+    return true;
+}
+
+void dynamixel_rcv()
+{
+    int toRead = dyn_serial.available();
+    if( toRead > 0 )
+    {
+        size_t maxRead = RCV_BUF_LEN - rcv_idx;
+        if( toRead > maxRead ) toRead = maxRead;
+
+        size_t nRead = dyn_serial.readBytes(rcv_buf, toRead);
+        rcv_idx += nRead;
+    }
+
+    // need at least 4B header + ID + 2B LEN + INST + 2B CRC
+    if( rcv_idx - pkt_idx >= MIN_PACKET_LEN )
+    {
+        // advance packet start pointer until it actually points to start of packet
+        while( pkt_idx < rcv_idx )
+        {
+            if( is_valid_header(rcv_buf + pkt_idx) ) break;
+            pkt_idx++;
+        }
+
+        if( rcv_idx - pkt_idx >= MIN_PACKET_LEN )
+        {
+            // full packet w/ valid header detected
+            uint8_t *pkt = rcv_buf + pkt_idx;
+
+            // process device status
+            uint8_t dev_id = pkt[PKT_ID];
+            DynamixelStatus *device = dynamixels[dev_id];
+            device->last_status = (dyn_status)pkt[PKT_ERR];
+
+            uint16_t pkt_len = get_pkt_short(pkt, PKT_LEN);
+
+            int param_len = pkt_len - 3; // length includes INST and 2B CRC
+            if( param_len == 1 )
+            {
+                // read byte
+                device->last_data_read = pkt[STAT_PARAM(1)];
+            }
+            else if( param_len == 2 )
+            {
+                // read short
+                device->last_data_read = get_pkt_short(pkt, STAT_PARAM(1));
+            }
+
+            size_t next_pkt_offset = HEADER_LEN + pkt_len;
+            pkt_idx += next_pkt_offset;
+        }
+
+        // shift remaining data in buffer to the front
+        if( pkt_idx > 0 )
+        {
+            size_t data_len = rcv_idx - pkt_idx;
+            if( data_len > 0 )
+            {
+                // only need to move data if data exists
+                memmove(rcv_buf, rcv_buf + pkt_idx, data_len);
+            }
+
+            pkt_idx = 0;
+            rcv_idx = pkt_idx + data_len;
+        }
+    }
+}
+
+void write_synch_goal( int shoulder_ang, int elbow_ang )
 {
     // H1 H2 H3 RSV ID LL LH INST ADDL ADDH DLL DLH ID1 D1L D1H ID2 D2L D2H CRC1 CRC2
     //|------------|--|-----|----|---------|-------|-----------|-----------|---------|
     // 0            4  5     7    8         10      12  13      15  16      18         len = 20
     
     xmit_buf[PKT_ID] = BCAST_ID;
-    xmit_buf[LEN_LOW] = 20;
-    xmit_buf[LEN_HIGH] = 0;
+    set_pkt_short(xmit_buf, PKT_LEN, 20);
     xmit_buf[PKT_INSTRUCT] = INST_SYN_WRITE;
 
-    xmit_buf[PARAM(1)] = 30; // addr = goal position (30)
-    xmit_buf[PARAM(2)] = 0;
-    xmit_buf[PARAM(3)] = 2;  // data len = 2 bytes
-    xmit_buf[PARAM(4)] = 0;
+    set_pkt_short(xmit_buf, PARAM(1), GOAL_POSITION); // addr = goal position (30)
+    set_pkt_short(xmit_buf, PARAM(3), 2);  // data len = 2 bytes
 
     // shoulder
     xmit_buf[PARAM(5)] = shoulder_addr;
-    xmit_buf[PARAM(6)] = shoulder_ang & 0xFF;
-    xmit_buf[PARAM(7)] = (shoulder_ang >> 4) & 0xFF;
+    set_pkt_short(xmit_buf, PARAM(6), shoulder_ang);
 
     // elbow
     xmit_buf[PARAM(8)] = elbow_addr;
-    xmit_buf[PARAM(9)] = elbow_ang & 0xFF;
-    xmit_buf[PARAM(10)] = (elbow_ang >> 4) & 0xFF;
+    set_pkt_short(xmit_buf, PARAM(9), elbow_ang);
 
+    // CRC
     unsigned short crc = update_crc(0, xmit_buf, 18);
-    xmit_buf[PARAM(11)] = crc & 0xFF;
-    xmit_buf[PARAM(12)] = (crc >> 4) & 0xFF;
+    set_pkt_short(xmit_buf, PARAM(11), crc);
+
+    dyn_serial.write(xmit_buf, 20);
+}
+
+void write_torque_en( bool enabled )
+{
+    // H1 H2 H3 RSV ID LL LH INST ADDL ADDH DLL DLH ID1 D1 ID2 D2 CRCL CRCH
+    //|------------|--|-----|----|---------|-------|------|------|---------|
+    // 0            4  5     7    8         10      12  13 14  15 16         len = 18
+    
+    xmit_buf[PKT_ID] = BCAST_ID;
+    set_pkt_short(xmit_buf, PKT_LEN, 18);
+    xmit_buf[PKT_INSTRUCT] = INST_SYN_WRITE;
+
+    set_pkt_short(xmit_buf, PARAM(1), TORQUE_EN); // addr = torque enable (24)
+    set_pkt_short(xmit_buf, PARAM(3), 1);  // data len = 1 byte
+
+    // shoulder
+    xmit_buf[PARAM(5)] = shoulder_addr;
+    xmit_buf[PARAM(6)] = (enabled ? 1 : 0);
+
+    // elbow
+    xmit_buf[PARAM(7)] = elbow_addr;
+    xmit_buf[PARAM(8)] = (enabled ? 1 : 0);
+
+    // CRC
+    unsigned short crc = update_crc(0, xmit_buf, 16);
+    set_pkt_short(xmit_buf, PARAM(9), crc);
+
+    dyn_serial.write(xmit_buf, 20);
+}
+
+void read_short( uint8_t device, xl320_addr addr )
+{
+    // H1 H2 H3 RSV ID LL LH INST ADDL ADDH DLL DLH CRCL CRCH
+    //|------------|--|-----|----|---------|-------|---------|
+    // 0            4  5     7    8         10      12   13   len = 14
+    
+    xmit_buf[PKT_ID] = BCAST_ID;
+    set_pkt_short(xmit_buf, PKT_LEN, 14);
+    xmit_buf[PKT_INSTRUCT] = INST_READ;
+
+    set_pkt_short(xmit_buf, PARAM(1), addr);
+}
+
+void set_pkt_short( uint8_t *buf, int start_idx, uint16_t value )
+{
+    buf[start_idx] = value & 0xFF;
+    buf[start_idx + 1] = (value >> 8) & 0xFF;
+}
+
+uint16_t get_pkt_short( uint8_t *pkt, int start_idx )
+{
+    uint16_t val = pkt[start_idx];
+    val |= pkt[start_idx + 1] << 8;
 }
 
 // copied from dynamixel 2.0 protocol documentation
-unsigned short update_crc(unsigned short crc_accum, unsigned char *data_blk_ptr, unsigned short data_blk_size)
+unsigned short update_crc(unsigned short crc_accum, uint8_t *data_blk_ptr, unsigned short data_blk_size)
 {
     unsigned short i, j;
     unsigned short crc_table[256] = {
