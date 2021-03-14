@@ -1,5 +1,4 @@
 #include <ESP8266WiFi.h>
-#include <Servo.h>
 
 #include "util.h"
 #include "kinematics.h"
@@ -24,14 +23,6 @@ char pktBuf[PKT_BUF_SIZE];
 PathQueueIterator path;
 CirclePathIterator path2(0,25,10);
 
-const int SERV_USEC_MIN = 800;
-const int SERV_USEC_MAX = 2200;
-const double SERV_ANG_MIN = 0.0;
-const double SERV_ANG_MAX = M_PI;
-
-Servo shoulder;
-Servo elbow;
-
 struct arm_angles dockAngles;
 
 void setup() {
@@ -54,9 +45,6 @@ void setup() {
     Serial.println("");
     Serial.println("WiFi connected");
     server.begin();
-
-    shoulder.attach(SHOULDER_PWM, SERV_USEC_MIN, SERV_USEC_MAX); // fs5106b limits
-    elbow.attach(ELBOW_PWM, SERV_USEC_MIN, SERV_USEC_MAX);
 
     dockAngles.shoulder = deg_to_rad(180);
     dockAngles.elbow = deg_to_rad(90);
@@ -98,16 +86,10 @@ static inline int servoAngToUsec( double theta )
 
 void setAngles( const struct arm_angles& ang )
 {
-    //float shoulderDeg = rad_to_deg(ang.shoulder);
-    //float elbowDeg = rad_to_deg(ang.elbow);
+    uint16_t s = angle_to_goal_pos(ang.shoulder);
+    uint16_t e = angle_to_goal_pos(ang.elbow);
 
-    //shoulder.write(shoulderDeg);
-    //elbow.write(-elbowDeg);
-
-    int s = servoAngToUsec(ang.shoulder);
-    shoulder.writeMicroseconds(s);
-    int e = servoAngToUsec(-ang.elbow);
-    elbow.writeMicroseconds(e);
+    write_synch_goal(s, e);
 
     Serial.printf("Servos set to: s = %d, e = %df\n", s, e);
 }
@@ -141,7 +123,11 @@ void loop()
     }
 
     // check for responses from dynamixels
-    dynamixel_rcv();
+    int responseId = dynamixel_rcv();
+                
+    Serial.printf("Received response from %d", responseId);
+
+    if( !(shoulder_status.last_pkt_acked && elbow_status.last_pkt_acked) ) return;
 
     PathElement nextMove = path2.moveNext();
     struct arm_angles ang;

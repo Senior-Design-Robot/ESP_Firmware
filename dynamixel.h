@@ -70,9 +70,15 @@ extern uint8_t rcv_buf[];
 
 extern SoftwareSerial dyn_serial;
 
+const double DYN_ANG_MIN = 0.0;
+const double DYN_ANG_MAX = 5.23599; // 300 degrees
+
+const int DYN_GOAL_MAX = 1023;
+
 struct DynamixelStatus
 {
     dyn_status last_status;
+    bool last_pkt_acked;
     uint16_t last_addr_read;
     uint16_t last_data_read;
 
@@ -85,10 +91,13 @@ extern DynamixelStatus elbow_status;
 extern DynamixelStatus *dynamixels[];
 
 void init_serial();
-void dynamixel_rcv();
+int dynamixel_rcv();
+
+/** Convert a servo angle in radians to dynamixel units */
+uint16_t angle_to_goal_pos( float angle );
 
 /** Transmit a synch write packet to set both shoulder and elbow angles */
-void write_synch_goal( int shoulder_ang, int elbow_ang );
+void write_synch_goal( uint16_t shoulder_ang, uint16_t elbow_ang );
 
 /** Turn the dynamixel torque on/off for both motors */
 void write_torque_en( bool enabled );

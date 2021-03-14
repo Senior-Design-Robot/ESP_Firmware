@@ -43,8 +43,10 @@ static bool is_valid_header( uint8_t *pkt )
     return true;
 }
 
-void dynamixel_rcv()
+int dynamixel_rcv()
 {
+    int recv_addr = 0;
+
     int toRead = dyn_serial.available();
     if( toRead > 0 )
     {
@@ -77,20 +79,28 @@ void dynamixel_rcv()
 
             uint16_t pkt_len = get_pkt_short(pkt, PKT_LEN);
 
-            int param_len = pkt_len - 3; // length includes INST and 2B CRC
-            if( param_len == 1 )
+            // make sure entire packet is received before processing
+            if( rcv_idx - pkt_idx >= HEADER_LEN + pkt_len )
             {
-                // read byte
-                device->last_data_read = pkt[STAT_PARAM(1)];
-            }
-            else if( param_len == 2 )
-            {
-                // read short
-                device->last_data_read = get_pkt_short(pkt, STAT_PARAM(1));
-            }
+                int param_len = pkt_len - 4; // length includes INST, ERR, and 2B CRC
+                if( param_len == 1 )
+                {
+                    // read byte
+                    device->last_data_read = pkt[STAT_PARAM(1)];
+                }
+                else if( param_len == 2 )
+                {
+                    // read short
+                    device->last_data_read = get_pkt_short(pkt, STAT_PARAM(1));
+                }
 
-            size_t next_pkt_offset = HEADER_LEN + pkt_len;
-            pkt_idx += next_pkt_offset;
+                recv_addr |= dev_id;
+                
+                device->last_pkt_acked = true;
+
+                size_t next_pkt_offset = HEADER_LEN + pkt_len;
+                pkt_idx += next_pkt_offset;
+            }
         }
 
         // shift remaining data in buffer to the front
@@ -107,9 +117,18 @@ void dynamixel_rcv()
             rcv_idx = pkt_idx + data_len;
         }
     }
+
+    return recv_addr;
 }
 
-void write_synch_goal( int shoulder_ang, int elbow_ang )
+uint16_t map_angle_to_goal_pos( double angle )
+{
+    double norm = (angle - DYN_ANG_MIN) / (DYN_ANG_MAX - DYN_ANG_MIN);
+    long mapped = lround(norm * (DYN_GOAL_MAX));
+    return (uint16_t)constrain(mapped, 0, DYN_GOAL_MAX);
+}
+
+void write_synch_goal( uint16_t shoulder_ang, uint16_t elbow_ang )
 {
     // H1 H2 H3 RSV ID LL LH INST ADDL ADDH DLL DLH ID1 D1L D1H ID2 D2L D2H CRC1 CRC2
     //|------------|--|-----|----|---------|-------|-----------|-----------|---------|
@@ -135,6 +154,9 @@ void write_synch_goal( int shoulder_ang, int elbow_ang )
     set_pkt_short(xmit_buf, PARAM(11), crc);
 
     dyn_serial.write(xmit_buf, 20);
+
+    shoulder_status.last_pkt_acked = false;
+    elbow_status.last_pkt_acked = false;
 }
 
 void write_torque_en( bool enabled )
@@ -163,6 +185,9 @@ void write_torque_en( bool enabled )
     set_pkt_short(xmit_buf, PARAM(9), crc);
 
     dyn_serial.write(xmit_buf, 20);
+
+    shoulder_status.last_pkt_acked = false;
+    elbow_status.last_pkt_acked = false;
 }
 
 void read_short( uint8_t device, xl320_addr addr )
@@ -176,6 +201,11 @@ void read_short( uint8_t device, xl320_addr addr )
     xmit_buf[PKT_INSTRUCT] = INST_READ;
 
     set_pkt_short(xmit_buf, PARAM(1), addr);
+
+    DynamixelStatus *dev_status = dynamixels[device];
+    dev_status->last_addr_read = addr;
+    dev_status->last_data_read = 0;
+    dev_status->last_pkt_acked = false;
 }
 
 void set_pkt_short( uint8_t *buf, int start_idx, uint16_t value )
@@ -187,7 +217,7 @@ void set_pkt_short( uint8_t *buf, int start_idx, uint16_t value )
 uint16_t get_pkt_short( uint8_t *pkt, int start_idx )
 {
     uint16_t val = pkt[start_idx];
-    val |= pkt[start_idx + 1] << 8;
+    return val | ((uint16_t)pkt[start_idx + 1] << 8);
 }
 
 // copied from dynamixel 2.0 protocol documentation
