@@ -101,8 +101,8 @@ void write_synch_goal( uint16_t shoulder_ang, uint16_t elbow_ang );
 /** Turn the dynamixel torque on/off for both motors */
 void write_torque_en( bool enabled );
 
-/** Request a 2-byte value from a motor */
-void read_short( uint8_t device, uint16_t addr );
+/** Request an n-byte value from a motor */
+void read_value( uint8_t device, xl320_addr addr, uint16_t width );
 
 /** Write a multi-byte parameter starting at the given index */
 void set_pkt_short( uint8_t *buf, int start_idx, uint16_t value );

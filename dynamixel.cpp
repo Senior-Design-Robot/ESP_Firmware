@@ -199,7 +199,7 @@ void write_torque_en( bool enabled )
     elbow_status.last_pkt_acked = false;
 }
 
-void read_short( uint8_t device, xl320_addr addr )
+void read_short( uint8_t device, xl320_addr addr, uint16_t width )
 {
     // H1 H2 H3 RSV ID LL LH INST ADDL ADDH DLL DLH CRCL CRCH
     //|------------|--|-----|----|---------|-------|---------|
@@ -215,7 +215,7 @@ void read_short( uint8_t device, xl320_addr addr )
     set_pkt_short(xmit_buf, PARAM(1), addr);
 
     // param 3/4 = data length (2B)
-    set_pkt_short(xmit_buf, PARAM(3), 2U);
+    set_pkt_short(xmit_buf, PARAM(3), width);
 
     // CRC
     unsigned short crc = update_crc(0, xmit_buf, TOTAL_LEN - 2);
