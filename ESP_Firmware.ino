@@ -26,7 +26,7 @@ CirclePathIterator path2(0,25,10);
 struct arm_angles dockAngles;
 
 void setup() {
-    Serial.begin(9600);
+    Serial.begin(57600, SERIAL_8N1);
     init_dyn_serial();
     delay(1000);
     
@@ -76,7 +76,7 @@ void handlePacket( int pktLength )
 
     // successfully parsed
     Serial.printf("Good data: x = %f, y = %f\n", x, y);
-    path.addMove(x, y, true);
+    path.addMove(x, y);
 }
 
 void setAngles( const struct arm_angles& ang )
@@ -125,7 +125,7 @@ void loop()
         Serial.printf("Received response from %d", responseId);
     }
 
-    if( !(shoulder_status.last_pkt_acked && elbow_status.last_pkt_acked) ) return;
+    //if( !(shoulder_status.last_pkt_acked && elbow_status.last_pkt_acked) ) return;
 
     PathElement nextMove = path2.moveNext();
     struct arm_angles ang;
