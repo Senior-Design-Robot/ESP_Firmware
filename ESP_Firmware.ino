@@ -1,9 +1,9 @@
 #include <ESP8266WiFi.h>
-#include <Servo.h>
 
 #include "util.h"
 #include "kinematics.h"
 #include "pathiterator.h"
+#include "dynamixel.h"
 
 #define SHOULDER_PWM D7
 #define ELBOW_PWM D6
@@ -23,18 +23,11 @@ char pktBuf[PKT_BUF_SIZE];
 PathQueueIterator path;
 CirclePathIterator path2(0,25,10);
 
-const int SERV_USEC_MIN = 800;
-const int SERV_USEC_MAX = 2200;
-const double SERV_ANG_MIN = 0.0;
-const double SERV_ANG_MAX = M_PI;
-
-Servo shoulder;
-Servo elbow;
-
 struct arm_angles dockAngles;
 
 void setup() {
-    Serial.begin(9600);
+    Serial.begin(57600, SERIAL_8N1);
+    init_dyn_serial();
     delay(1000);
     
     Serial.print("\nConnecting to ");
@@ -53,9 +46,6 @@ void setup() {
     Serial.println("");
     Serial.println("WiFi connected");
     server.begin();
-
-    shoulder.attach(SHOULDER_PWM, SERV_USEC_MIN, SERV_USEC_MAX); // fs5106b limits
-    elbow.attach(ELBOW_PWM, SERV_USEC_MIN, SERV_USEC_MAX);
 
     dockAngles.shoulder = deg_to_rad(180);
     dockAngles.elbow = deg_to_rad(90);
@@ -86,29 +76,17 @@ void handlePacket( int pktLength )
 
     // successfully parsed
     Serial.printf("Good data: x = %f, y = %f\n", x, y);
-    path.addMove(x, y, true);
-}
-
-static inline int servoAngToUsec( double theta )
-{
-    double norm = (theta - SERV_ANG_MIN) / (SERV_ANG_MAX - SERV_ANG_MIN);
-    return (int)lround(norm * (SERV_USEC_MAX - SERV_USEC_MIN)) + SERV_USEC_MIN;
+    path.addMove(x, y);
 }
 
 void setAngles( const struct arm_angles& ang )
 {
-    //float shoulderDeg = rad_to_deg(ang.shoulder);
-    //float elbowDeg = rad_to_deg(ang.elbow);
+    uint16_t s = angle_to_goal_pos(ang.shoulder);
+    uint16_t e = angle_to_goal_pos(ang.elbow);
 
-    //shoulder.write(shoulderDeg);
-    //elbow.write(-elbowDeg);
+    write_synch_goal(s, e);
 
-    int s = servoAngToUsec(ang.shoulder);
-    shoulder.writeMicroseconds(s);
-    int e = servoAngToUsec(-ang.elbow);
-    elbow.writeMicroseconds(e);
-
-    Serial.printf("Servos set to: s = %d, e = %df\n", s, e);
+    Serial.printf("Servos set to: s = %d, e = %d\n", s, e);
 }
 
 void loop() 
@@ -138,6 +116,16 @@ void loop()
 
         handlePacket(nRead);
     }
+
+    // check for responses from dynamixels
+    int responseId = dynamixel_rcv();
+
+    if( responseId )
+    {
+        Serial.printf("Received response from %d", responseId);
+    }
+
+    //if( !(shoulder_status.last_pkt_acked && elbow_status.last_pkt_acked) ) return;
 
     PathElement nextMove = path2.moveNext();
     struct arm_angles ang;

@@ -4,7 +4,7 @@
 
 enum PathElementType
 {
-    PATH_ZERO = 0,
+    PATH_NONE = 0,
     PATH_MOVE,
     PATH_PEN_UP,
     PATH_PEN_DOWN
@@ -16,7 +16,7 @@ typedef struct PathElement
     float x;
     float y;
 
-    PathElement() : type(PATH_ZERO), x(0), y(0) {}
+    PathElement() : type(PATH_NONE), x(0), y(0) {}
     PathElement( PathElementType type, float x, float y ) : type(type), x(x), y(y) {}
 } PathElement;
 
@@ -74,10 +74,12 @@ private:
     PathElement getPathEndLoc();
     void addSubdivisions( float startX, float startY, float endX, float endY );
 
+    static PathElement interpolate( const PathElement &target, const PathElement &current );
+
 public:
     PathQueueIterator();
 
-    void addMove( float x, float y, bool direct = false );
+    void addMove( float x, float y );
     void addPenMove( bool down );
     void clear();
 

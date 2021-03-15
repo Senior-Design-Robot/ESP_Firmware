@@ -116,16 +116,26 @@ void PathQueueIterator::addSubdivisions( float startX, float startY, float endX,
     pathQueue.push_back(PathElement(PATH_MOVE, endX, endY));
 }
 
-void PathQueueIterator::addMove( float x, float y, bool direct )
+PathElement PathQueueIterator::interpolate( const PathElement &target, const PathElement &current )
 {
-    if( direct )
-    {
-        pathQueue.push_back(PathElement(PATH_MOVE, x, y));
-        return;
-    }
+    float dx = target.x - current.x;
+    float dy = target.y - current.y;
+    float dist = sqrtf(dx * dx + dy * dy);
 
-    PathElement lastLoc = getPathEndLoc();
-    addSubdivisions(lastLoc.x, lastLoc.y, x, y);
+    // check if need to split up the path into segments
+    if( dist > MAX_DELTA )
+    {
+        // next = goal vector / magnitude * MAX_DELTA
+        float nextX = current.x + (dx * MAX_DELTA / dist);
+        float nextY = current.y + (dy * MAX_DELTA / dist);
+        return PathElement(PATH_MOVE, nextX, nextY);
+    }
+    return target;
+}
+
+void PathQueueIterator::addMove( float x, float y )
+{
+    pathQueue.push_back(PathElement(PATH_MOVE, x, y));
 }
 
 void PathQueueIterator::addPenMove( bool down )
@@ -143,11 +153,19 @@ void PathQueueIterator::clear()
 
 PathElement PathQueueIterator::moveNext()
 {
-    PathElement step;
-    if( pathQueue.pop(step) )
+    PathElement target;
+    if( pathQueue.peek(target) )
     {
-        lastMove = step;
-        return step;
+        if( (lastMove.x == target.x) && (lastMove.y == target.y) )
+        {
+            // finished previous move, start new one
+            pathQueue.pop(target);
+            if( !pathQueue.peek(target) ) return PathElement();
+        }
+
+        // interpolate to current target
+        lastMove = interpolate(target, lastMove);
+        return lastMove;
     }
     else return PathElement();
 }
