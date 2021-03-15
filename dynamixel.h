@@ -82,7 +82,7 @@ struct DynamixelStatus
     uint16_t last_addr_read;
     uint16_t last_data_read;
 
-    DynamixelStatus() : last_status(STATUS_OK), last_addr_read(0), last_data_read(0)
+    DynamixelStatus() : last_status(STATUS_OK), last_pkt_acked(true), last_addr_read(0), last_data_read(0)
     { }
 };
 
@@ -90,11 +90,11 @@ extern DynamixelStatus shoulder_status;
 extern DynamixelStatus elbow_status;
 extern DynamixelStatus *dynamixels[];
 
-void init_serial();
+void init_dyn_serial();
 int dynamixel_rcv();
 
 /** Convert a servo angle in radians to dynamixel units */
-uint16_t angle_to_goal_pos( float angle );
+uint16_t angle_to_goal_pos( double angle );
 
 /** Transmit a synch write packet to set both shoulder and elbow angles */
 void write_synch_goal( uint16_t shoulder_ang, uint16_t elbow_ang );
@@ -106,7 +106,7 @@ void write_torque_en( bool enabled );
 void read_short( uint8_t device, uint16_t addr );
 
 /** Write a multi-byte parameter starting at the given index */
-void set_pkt_short( uint8_t *buf, int start_idx, int value );
+void set_pkt_short( uint8_t *buf, int start_idx, uint16_t value );
 
 /** Read a two-byte parameter starting at the given index */
 uint16_t get_pkt_short( uint8_t *pkt, int start_idx );

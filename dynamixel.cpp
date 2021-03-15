@@ -19,7 +19,7 @@ DynamixelStatus elbow_status;
 DynamixelStatus *dynamixels[3];
 
 
-void init_serial()
+void init_dyn_serial()
 {
     dynamixels[0] = nullptr;
     dynamixels[1] = &shoulder_status;
@@ -121,7 +121,7 @@ int dynamixel_rcv()
     return recv_addr;
 }
 
-uint16_t map_angle_to_goal_pos( double angle )
+uint16_t angle_to_goal_pos( double angle )
 {
     double norm = (angle - DYN_ANG_MIN) / (DYN_ANG_MAX - DYN_ANG_MIN);
     long mapped = lround(norm * (DYN_GOAL_MAX));

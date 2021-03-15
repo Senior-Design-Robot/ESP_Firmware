@@ -27,6 +27,7 @@ struct arm_angles dockAngles;
 
 void setup() {
     Serial.begin(9600);
+    init_dyn_serial();
     delay(1000);
     
     Serial.print("\nConnecting to ");
@@ -78,12 +79,6 @@ void handlePacket( int pktLength )
     path.addMove(x, y, true);
 }
 
-static inline int servoAngToUsec( double theta )
-{
-    double norm = (theta - SERV_ANG_MIN) / (SERV_ANG_MAX - SERV_ANG_MIN);
-    return (int)lround(norm * (SERV_USEC_MAX - SERV_USEC_MIN)) + SERV_USEC_MIN;
-}
-
 void setAngles( const struct arm_angles& ang )
 {
     uint16_t s = angle_to_goal_pos(ang.shoulder);
@@ -91,7 +86,7 @@ void setAngles( const struct arm_angles& ang )
 
     write_synch_goal(s, e);
 
-    Serial.printf("Servos set to: s = %d, e = %df\n", s, e);
+    Serial.printf("Servos set to: s = %d, e = %d\n", s, e);
 }
 
 void loop() 
@@ -124,8 +119,11 @@ void loop()
 
     // check for responses from dynamixels
     int responseId = dynamixel_rcv();
-                
-    Serial.printf("Received response from %d", responseId);
+
+    if( responseId )
+    {
+        Serial.printf("Received response from %d", responseId);
+    }
 
     if( !(shoulder_status.last_pkt_acked && elbow_status.last_pkt_acked) ) return;
 
