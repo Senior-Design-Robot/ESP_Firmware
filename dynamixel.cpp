@@ -1,5 +1,9 @@
-#include "dynamixel.h"
+#ifndef ARDUINO
+#define ARDUINO 10813
+#endif
 
+#include "dynamixel.h"
+#include "HardwareSerial.h"
 
 uint8_t shoulder_addr = 1;
 uint8_t elbow_addr = 2;
@@ -11,7 +15,7 @@ uint8_t rcv_buf[RCV_BUF_LEN];
 size_t pkt_idx = 0;
 size_t rcv_idx = 0;
 
-SoftwareSerial dyn_serial;
+//SoftwareSerial dyn_serial;
 
 DynamixelStatus shoulder_status;
 DynamixelStatus elbow_status;
@@ -31,7 +35,8 @@ void init_dyn_serial()
     xmit_buf[3] = 0x00; // reserved
 
     // software serial, 57600 baud, 8 data, 1 stop, no parity, half duplex
-    dyn_serial.begin(57600, SWSERIAL_8N1, 12, 12);
+    //dyn_serial.begin(9800, SWSERIAL_8N1, 12, 12, false);
+    //dyn_serial.enableIntTx(false);
 }
 
 static bool is_valid_header( uint8_t *pkt )
@@ -47,13 +52,13 @@ int dynamixel_rcv()
 {
     int recv_addr = 0;
 
-    int toRead = dyn_serial.available();
+    int toRead = Serial.available();
     if( toRead > 0 )
     {
         size_t maxRead = RCV_BUF_LEN - rcv_idx;
         if( toRead > maxRead ) toRead = maxRead;
 
-        size_t nRead = dyn_serial.readBytes(rcv_buf, toRead);
+        size_t nRead = Serial.readBytes(rcv_buf, toRead);
         rcv_idx += nRead;
     }
 
@@ -132,10 +137,12 @@ void write_synch_goal( uint16_t shoulder_ang, uint16_t elbow_ang )
 {
     // H1 H2 H3 RSV ID LL LH INST ADDL ADDH DLL DLH ID1 D1L D1H ID2 D2L D2H CRC1 CRC2
     //|------------|--|-----|----|---------|-------|-----------|-----------|---------|
-    // 0            4  5     7    8         10      12  13      15  16      18         len = 20
-    
+    // 0            4  5     7    8         10      12  13      15  16      18         total len = 20
+    const uint16_t TOTAL_LEN = 20;
+    const uint16_t LEN = TOTAL_LEN - HEADER_LEN;
+
     xmit_buf[PKT_ID] = BCAST_ID;
-    set_pkt_short(xmit_buf, PKT_LEN, 20);
+    set_pkt_short(xmit_buf, PKT_LEN, LEN);
     xmit_buf[PKT_INSTRUCT] = INST_SYN_WRITE;
 
     set_pkt_short(xmit_buf, PARAM(1), GOAL_POSITION); // addr = goal position (30)
@@ -153,7 +160,7 @@ void write_synch_goal( uint16_t shoulder_ang, uint16_t elbow_ang )
     unsigned short crc = update_crc(0, xmit_buf, 18);
     set_pkt_short(xmit_buf, PARAM(11), crc);
 
-    dyn_serial.write(xmit_buf, 20);
+    Serial.write(xmit_buf, TOTAL_LEN);
 
     shoulder_status.last_pkt_acked = false;
     elbow_status.last_pkt_acked = false;
@@ -164,9 +171,11 @@ void write_torque_en( bool enabled )
     // H1 H2 H3 RSV ID LL LH INST ADDL ADDH DLL DLH ID1 D1 ID2 D2 CRCL CRCH
     //|------------|--|-----|----|---------|-------|------|------|---------|
     // 0            4  5     7    8         10      12  13 14  15 16         len = 18
+    const uint16_t TOTAL_LEN = 18;
+    const uint16_t LEN = TOTAL_LEN - HEADER_LEN;
     
     xmit_buf[PKT_ID] = BCAST_ID;
-    set_pkt_short(xmit_buf, PKT_LEN, 18);
+    set_pkt_short(xmit_buf, PKT_LEN, LEN);
     xmit_buf[PKT_INSTRUCT] = INST_SYN_WRITE;
 
     set_pkt_short(xmit_buf, PARAM(1), TORQUE_EN); // addr = torque enable (24)
@@ -181,10 +190,10 @@ void write_torque_en( bool enabled )
     xmit_buf[PARAM(8)] = (enabled ? 1 : 0);
 
     // CRC
-    unsigned short crc = update_crc(0, xmit_buf, 16);
+    unsigned short crc = update_crc(0, xmit_buf, TOTAL_LEN - 2);
     set_pkt_short(xmit_buf, PARAM(9), crc);
 
-    dyn_serial.write(xmit_buf, 20);
+    Serial.write(xmit_buf, TOTAL_LEN);
 
     shoulder_status.last_pkt_acked = false;
     elbow_status.last_pkt_acked = false;
@@ -195,12 +204,24 @@ void read_short( uint8_t device, xl320_addr addr )
     // H1 H2 H3 RSV ID LL LH INST ADDL ADDH DLL DLH CRCL CRCH
     //|------------|--|-----|----|---------|-------|---------|
     // 0            4  5     7    8         10      12   13   len = 14
+    const uint16_t TOTAL_LEN = 14;
+    const uint16_t LEN = TOTAL_LEN - HEADER_LEN;
     
     xmit_buf[PKT_ID] = BCAST_ID;
-    set_pkt_short(xmit_buf, PKT_LEN, 14);
+    set_pkt_short(xmit_buf, PKT_LEN, LEN);
     xmit_buf[PKT_INSTRUCT] = INST_READ;
 
+    // param 1/2 = addr to read
     set_pkt_short(xmit_buf, PARAM(1), addr);
+
+    // param 3/4 = data length (2B)
+    set_pkt_short(xmit_buf, PARAM(3), 2U);
+
+    // CRC
+    unsigned short crc = update_crc(0, xmit_buf, TOTAL_LEN - 2);
+    set_pkt_short(xmit_buf, PARAM(5), crc);
+    
+    Serial.write(xmit_buf, TOTAL_LEN);
 
     DynamixelStatus *dev_status = dynamixels[device];
     dev_status->last_addr_read = addr;

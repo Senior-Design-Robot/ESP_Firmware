@@ -1,7 +1,6 @@
 #pragma once
 
 #include "Arduino.h"
-#include "SoftwareSerial.h"
 
 #define PKT_ID 4
 #define PKT_LEN 5
@@ -68,7 +67,7 @@ extern uint8_t xmit_buf[];
 const size_t RCV_BUF_LEN = 128;
 extern uint8_t rcv_buf[];
 
-extern SoftwareSerial dyn_serial;
+//extern SoftwareSerial dyn_serial;
 
 const double DYN_ANG_MIN = 0.0;
 const double DYN_ANG_MAX = 5.23599; // 300 degrees
