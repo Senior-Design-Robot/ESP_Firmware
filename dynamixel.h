@@ -2,6 +2,9 @@
 
 #include "Arduino.h"
 
+#define DRIVE_DIS_PIN 5
+// D1
+
 #define PKT_ID 4
 #define PKT_LEN 5
 #define PKT_INSTRUCT 7
@@ -20,6 +23,7 @@
 #define INST_PING 0x01
 #define INST_READ 0x02
 #define INST_WRITE 0x03
+#define INST_STATUS 0x55
 #define INST_SYN_READ 0x82
 #define INST_SYN_WRITE 0x83
 
@@ -90,7 +94,12 @@ extern DynamixelStatus elbow_status;
 extern DynamixelStatus *dynamixels[];
 
 void init_dyn_serial();
+
+/** Dequeue and process incoming data */
 int dynamixel_rcv();
+
+/** Queue a packet from the buffer and start transmission */
+void start_send( size_t length );
 
 /** Convert a servo angle in radians to dynamixel units */
 uint16_t angle_to_goal_pos( double angle );

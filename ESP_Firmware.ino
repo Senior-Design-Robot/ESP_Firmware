@@ -82,7 +82,7 @@ void handlePacket( int pktLength )
 void setAngles( const struct arm_angles& ang )
 {
     uint16_t s = angle_to_goal_pos(ang.shoulder);
-    uint16_t e = angle_to_goal_pos(ang.elbow);
+    uint16_t e = angle_to_goal_pos(-ang.elbow);
 
     write_synch_goal(s, e);
 

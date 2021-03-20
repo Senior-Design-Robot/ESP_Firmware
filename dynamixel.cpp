@@ -1,7 +1,3 @@
-#ifndef ARDUINO
-#define ARDUINO 10813
-#endif
-
 #include "dynamixel.h"
 #include "HardwareSerial.h"
 
@@ -34,9 +30,8 @@ void init_dyn_serial()
     xmit_buf[2] = 0xFD;
     xmit_buf[3] = 0x00; // reserved
 
-    // software serial, 57600 baud, 8 data, 1 stop, no parity, half duplex
-    //dyn_serial.begin(9800, SWSERIAL_8N1, 12, 12, false);
-    //dyn_serial.enableIntTx(false);
+    pinMode(DRIVE_DIS_PIN, OUTPUT);
+    digitalWrite(DRIVE_DIS_PIN, HIGH);
 }
 
 static bool is_valid_header( uint8_t *pkt )
@@ -79,29 +74,35 @@ int dynamixel_rcv()
 
             // process device status
             uint8_t dev_id = pkt[PKT_ID];
-            DynamixelStatus *device = dynamixels[dev_id];
-            device->last_status = (dyn_status)pkt[PKT_ERR];
-
             uint16_t pkt_len = get_pkt_short(pkt, PKT_LEN);
 
             // make sure entire packet is received before processing
             if( rcv_idx - pkt_idx >= HEADER_LEN + pkt_len )
             {
-                int param_len = pkt_len - 4; // length includes INST, ERR, and 2B CRC
-                if( param_len == 1 )
-                {
-                    // read byte
-                    device->last_data_read = pkt[STAT_PARAM(1)];
-                }
-                else if( param_len == 2 )
-                {
-                    // read short
-                    device->last_data_read = get_pkt_short(pkt, STAT_PARAM(1));
-                }
+                uint8_t instruct = pkt[PKT_INSTRUCT];
 
-                recv_addr |= dev_id;
-                
-                device->last_pkt_acked = true;
+                if( instruct == 0x55 )
+                {
+                    // Status packet
+                    DynamixelStatus *device = dynamixels[dev_id];
+                    device->last_status = (dyn_status)pkt[PKT_ERR];
+
+                    int param_len = pkt_len - 4; // length includes INST, ERR, and 2B CRC
+                    if( param_len == 1 )
+                    {
+                        // read byte
+                        device->last_data_read = pkt[STAT_PARAM(1)];
+                    }
+                    else if( param_len == 2 )
+                    {
+                        // read short
+                        device->last_data_read = get_pkt_short(pkt, STAT_PARAM(1));
+                    }
+
+                    recv_addr |= dev_id;
+                    
+                    device->last_pkt_acked = true;
+                }
 
                 size_t next_pkt_offset = HEADER_LEN + pkt_len;
                 pkt_idx += next_pkt_offset;
@@ -133,6 +134,14 @@ uint16_t angle_to_goal_pos( double angle )
     return (uint16_t)constrain(mapped, 0, DYN_GOAL_MAX);
 }
 
+void start_send( size_t length )
+{
+    digitalWrite(DRIVE_DIS_PIN, LOW); // I'm the captain now
+    Serial.write(xmit_buf, length);
+    Serial.flush();
+    digitalWrite(DRIVE_DIS_PIN, HIGH);
+}
+
 void write_synch_goal( uint16_t shoulder_ang, uint16_t elbow_ang )
 {
     // H1 H2 H3 RSV ID LL LH INST ADDL ADDH DLL DLH ID1 D1L D1H ID2 D2L D2H CRC1 CRC2
@@ -160,7 +169,7 @@ void write_synch_goal( uint16_t shoulder_ang, uint16_t elbow_ang )
     unsigned short crc = update_crc(0, xmit_buf, 18);
     set_pkt_short(xmit_buf, PARAM(11), crc);
 
-    Serial.write(xmit_buf, TOTAL_LEN);
+    start_send(TOTAL_LEN);
 
     shoulder_status.last_pkt_acked = false;
     elbow_status.last_pkt_acked = false;
@@ -193,13 +202,13 @@ void write_torque_en( bool enabled )
     unsigned short crc = update_crc(0, xmit_buf, TOTAL_LEN - 2);
     set_pkt_short(xmit_buf, PARAM(9), crc);
 
-    Serial.write(xmit_buf, TOTAL_LEN);
+    start_send(TOTAL_LEN);
 
     shoulder_status.last_pkt_acked = false;
     elbow_status.last_pkt_acked = false;
 }
 
-void read_short( uint8_t device, xl320_addr addr, uint16_t width )
+void read_value( uint8_t device, xl320_addr addr, uint16_t width )
 {
     // H1 H2 H3 RSV ID LL LH INST ADDL ADDH DLL DLH CRCL CRCH
     //|------------|--|-----|----|---------|-------|---------|
@@ -207,7 +216,7 @@ void read_short( uint8_t device, xl320_addr addr, uint16_t width )
     const uint16_t TOTAL_LEN = 14;
     const uint16_t LEN = TOTAL_LEN - HEADER_LEN;
     
-    xmit_buf[PKT_ID] = BCAST_ID;
+    xmit_buf[PKT_ID] = device;
     set_pkt_short(xmit_buf, PKT_LEN, LEN);
     xmit_buf[PKT_INSTRUCT] = INST_READ;
 
@@ -221,7 +230,7 @@ void read_short( uint8_t device, xl320_addr addr, uint16_t width )
     unsigned short crc = update_crc(0, xmit_buf, TOTAL_LEN - 2);
     set_pkt_short(xmit_buf, PARAM(5), crc);
     
-    Serial.write(xmit_buf, TOTAL_LEN);
+    start_send(TOTAL_LEN);
 
     DynamixelStatus *dev_status = dynamixels[device];
     dev_status->last_addr_read = addr;
