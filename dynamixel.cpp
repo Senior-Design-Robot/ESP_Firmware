@@ -238,6 +238,43 @@ void read_value( uint8_t device, xl320_addr addr, uint16_t width )
     dev_status->last_pkt_acked = false;
 }
 
+void synch_read_value( xl320_addr addr, uint16_t width )
+{
+    // H1 H2 H3 RSV ID LL LH INST ADDL ADDH DLL DLH DEV1 DEV2 CRCL CRCH
+    //|------------|--|-----|----|---------|-------|---------|---------|
+    // 0            4  5     7    8         10      12   13   14   15   len = 16
+    const uint16_t TOTAL_LEN = 16;
+    const uint16_t LEN = TOTAL_LEN - HEADER_LEN;
+
+    xmit_buf[PKT_ID] = BCAST_ID;
+    set_pkt_short(xmit_buf, PKT_LEN, LEN);
+    xmit_buf[PKT_INSTRUCT] = INST_READ;
+
+    // param 1/2 = addr to read
+    set_pkt_short(xmit_buf, PARAM(1), addr);
+
+    // param 3/4 = data length (2B)
+    set_pkt_short(xmit_buf, PARAM(3), width);
+
+    // device ids
+    xmit_buf[PARAM(5)] = 1;
+    xmit_buf[PARAM(6)] = 2;
+
+    // CRC
+    unsigned short crc = update_crc(0, xmit_buf, TOTAL_LEN - 2);
+    set_pkt_short(xmit_buf, PARAM(7), crc);
+    
+    start_send(TOTAL_LEN);
+
+    shoulder_status.last_addr_read = addr;
+    shoulder_status.last_data_read = 0;
+    shoulder_status.last_pkt_acked = false;
+
+    elbow_status.last_addr_read = addr;
+    elbow_status.last_data_read = 0;
+    elbow_status.last_pkt_acked = false;
+}
+
 void set_pkt_short( uint8_t *buf, int start_idx, uint16_t value )
 {
     buf[start_idx] = value & 0xFF;

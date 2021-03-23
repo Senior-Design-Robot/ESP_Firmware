@@ -113,6 +113,9 @@ void write_torque_en( bool enabled );
 /** Request an n-byte value from a motor */
 void read_value( uint8_t device, xl320_addr addr, uint16_t width );
 
+/** Request an n-byte value from both motors */
+void synch_read_value( xl320_addr addr, uint16_t width );
+
 /** Write a multi-byte parameter starting at the given index */
 void set_pkt_short( uint8_t *buf, int start_idx, uint16_t value );
 

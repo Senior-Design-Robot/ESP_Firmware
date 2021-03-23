@@ -1,12 +1,12 @@
 #include <ESP8266WiFi.h>
+#include <Servo.h>
 
 #include "util.h"
 #include "kinematics.h"
 #include "pathiterator.h"
 #include "dynamixel.h"
 
-#define SHOULDER_PWM D7
-#define ELBOW_PWM D6
+#define PEN_SRV_PIN D3
 
 const char* const ssid = "KATY-CORSAIR 0494";        // Enter SSID here
 const char* const password = "0Y46u%02";  //Enter Password here
@@ -25,7 +25,19 @@ CirclePathIterator path2(0,25,10);
 
 struct arm_angles dockAngles;
 
-void setup() {
+Servo penActuator;
+
+void setPenDown( bool extended )
+{
+    int setPoint = extended ? 180 : 0;
+    penActuator.write(setPoint);
+}
+
+void setup()
+{
+    penActuator.begin(PEN_SRV_PIN, 1500, 2100); // us limits
+    setPenDown(false);
+
     Serial.begin(57600, SERIAL_8N1);
     init_dyn_serial();
     delay(1000);
@@ -137,8 +149,13 @@ void loop()
         setAngles(ang);
         break;
 
+    case PATH_PEN_DOWN:
+        setPenDown(true);
+        break;
+
+    case PATH_PEN_UP:
     default:
-        //setAngles(dockAngles);
+        setPenDown(false);
         break;
     }
 
