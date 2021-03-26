@@ -6,7 +6,10 @@
 #include "pathiterator.h"
 #include "dynamixel.h"
 
-#define PEN_SRV_PIN D3
+#define PIN_LED D4
+#define PIN_5V_GOOD D5
+#define PIN_7V_GOOD D6
+#define PIN_PEN_SRV D8
 
 const char* const ssid = "KATY-CORSAIR 0494";        // Enter SSID here
 const char* const password = "0Y46u%02";  //Enter Password here
@@ -35,12 +38,26 @@ void setPenDown( bool extended )
 
 void setup()
 {
-    penActuator.begin(PEN_SRV_PIN, 1500, 2100); // us limits
-    setPenDown(false);
+    // set status LED to off
+    pinMode(PIN_LED, OUTPUT);
+    digitalWrite(PIN_LED, HIGH);
 
+    // PWR_GOOD inputs
+    pinMode(PIN_5V_GOOD, INPUT_PULLUP);
+    pinMode(PIN_7V_GOOD, INPUT_PULLUP);
+
+    // Start serial comms
     Serial.begin(57600, SERIAL_8N1);
     init_dyn_serial();
     delay(1000);
+
+    Serial.println("\nChecking voltage...");
+    //while( !(digitalRead(PIN_5V_GOOD) && digitalRead(PIN_7V_GOOD)) );
+    Serial.println("Voltage good!");
+
+    // setup linear actuator
+    penActuator.attach(PIN_PEN_SRV, 1500, 2100); // microsec limits
+    setPenDown(false);
     
     Serial.print("\nConnecting to ");
     Serial.println(ssid);
@@ -49,15 +66,22 @@ void setup()
     WiFi.begin(ssid, password);
     
     //check wi-fi is connected to wi-fi network
+    uint8_t ledBlink = LOW;
+
     while (WiFi.status() != WL_CONNECTED)
     {
         delay(500);
         Serial.print(".");
+
+        digitalWrite(PIN_LED, ledBlink);
+        ledBlink = !ledBlink;
     }
     
     Serial.println("");
     Serial.println("WiFi connected");
     server.begin();
+
+    digitalWrite(PIN_LED, LOW); // LED on
 
     dockAngles.shoulder = deg_to_rad(180);
     dockAngles.elbow = deg_to_rad(90);
@@ -134,7 +158,7 @@ void loop()
 
     if( responseId )
     {
-        Serial.printf("Received response from %d", responseId);
+        Serial.printf("Received response from %d\n", responseId);
     }
 
     //if( !(shoulder_status.last_pkt_acked && elbow_status.last_pkt_acked) ) return;
