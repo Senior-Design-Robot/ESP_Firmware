@@ -11,15 +11,19 @@
 #define PIN_7V_GOOD D6
 #define PIN_PEN_SRV D8
 
+const int ESP_ID = 1;
+
 const char* const ssid = "KATY-CORSAIR 0494";        // Enter SSID here
 const char* const password = "0Y46u%02";  //Enter Password here
 
-//const char* const ssid = "SM-G892UAD7";        // Enter SSID here
-//const char* const password = "4128498770";  //Enter Password here
+IPAddress PI_SERVER(192,168,137,1);
+const unsigned int PI_PORT = 1896;
+WiFiClient client;
 
-const unsigned int LISTEN_PORT = 2462;
+const unsigned int LISTEN_PORT = 1897;
 WiFiServer server(LISTEN_PORT);
 
+char sendBuf[32];
 const unsigned int PKT_BUF_SIZE = 255;
 char pktBuf[PKT_BUF_SIZE];
 
@@ -28,63 +32,32 @@ CirclePathIterator path2(0,25,10);
 
 struct arm_angles dockAngles;
 
+// digital interfaces
 Servo penActuator;
+bool powerOk;
 
-void setPenDown( bool extended )
+// Utility Functions
+//-------------------------------------------------------------------
+
+void sendStatus()
 {
-    int setPoint = extended ? 180 : 0;
-    penActuator.write(setPoint);
-}
-
-void setup()
-{
-    // set status LED to off
-    pinMode(PIN_LED, OUTPUT);
-    digitalWrite(PIN_LED, HIGH);
-
-    // PWR_GOOD inputs
-    pinMode(PIN_5V_GOOD, INPUT_PULLUP);
-    pinMode(PIN_7V_GOOD, INPUT_PULLUP);
-
-    // Start serial comms
-    Serial.begin(57600, SERIAL_8N1);
-    init_dyn_serial();
-    delay(1000);
-
-    Serial.println("\nChecking voltage...");
-    //while( !(digitalRead(PIN_5V_GOOD) && digitalRead(PIN_7V_GOOD)) );
-    Serial.println("Voltage good!");
-
-    // setup linear actuator
-    penActuator.attach(PIN_PEN_SRV, 1500, 2100); // microsec limits
-    setPenDown(false);
+    int nWrite = sprintf(sendBuf, "1,%d,%d,%d,%d,%d,%d\n",
+        ESP_ID,
+        powerOk,
+        shoulder_status.last_status,
+        elbow_status.last_status,
+        0,
+        path.remaining());
     
-    Serial.print("\nConnecting to ");
-    Serial.println(ssid);
-    
-    //connect to your local wi-fi network
-    WiFi.begin(ssid, password);
-    
-    //check wi-fi is connected to wi-fi network
-    uint8_t ledBlink = LOW;
-
-    while (WiFi.status() != WL_CONNECTED)
+    if( client.connect(PI_SERVER, PI_PORT) )
     {
-        delay(500);
-        Serial.print(".");
-
-        digitalWrite(PIN_LED, ledBlink);
-        ledBlink = !ledBlink;
+        client.write(sendBuf, nWrite);
+        client.stop();
     }
-    
-    Serial.println("");
-    Serial.println("WiFi connected");
-    server.begin();
-
-    digitalWrite(PIN_LED, LOW); // LED on
-
-    dockAngles.shoulder = deg_to_rad(180);
-    dockAngles.elbow = deg_to_rad(90);
+    else
+    {
+        Serial.println("Couldn't connect to pi socket");
+    }
 }
 
 void handlePacket( int pktLength )
@@ -115,6 +88,12 @@ void handlePacket( int pktLength )
     path.addMove(x, y);
 }
 
+void setPenDown( bool extended )
+{
+    int setPoint = extended ? 180 : 0;
+    penActuator.write(setPoint);
+}
+
 void setAngles( const struct arm_angles& ang )
 {
     uint16_t s = angle_to_goal_pos(ang.shoulder);
@@ -123,6 +102,71 @@ void setAngles( const struct arm_angles& ang )
     write_synch_goal(s, e);
 
     Serial.printf("Servos set to: s = %d, e = %d\n", s, e);
+}
+
+// Arduino Functions
+//-------------------------------------------------------------------
+
+void setup()
+{
+    // set status LED to off
+    pinMode(PIN_LED, OUTPUT);
+    digitalWrite(PIN_LED, HIGH);
+
+    // PWR_GOOD inputs
+    pinMode(PIN_5V_GOOD, INPUT_PULLUP);
+    pinMode(PIN_7V_GOOD, INPUT_PULLUP);
+
+    // Start serial comms
+    Serial.begin(57600, SERIAL_8N1);
+    init_dyn_serial();
+    delay(1000);
+
+    Serial.println("\nChecking voltage...");
+    while( !powerOk )
+    {
+        powerOk = digitalRead(PIN_5V_GOOD) && digitalRead(PIN_7V_GOOD);
+    }
+    Serial.println("Voltage good!");
+
+    // setup linear actuator
+    penActuator.attach(PIN_PEN_SRV, 1500, 2100); // microsec limits
+    setPenDown(false);
+    
+    Serial.print("\nConnecting to ");
+    Serial.println(ssid);
+    
+    //connect to your local wi-fi network
+    WiFi.begin(ssid, password);
+    
+    //check wi-fi is connected to wi-fi network
+    uint8_t ledBlink = LOW;
+
+    while (WiFi.status() != WL_CONNECTED)
+    {
+        delay(500);
+        Serial.print(".");
+
+        digitalWrite(PIN_LED, ledBlink);
+        ledBlink = !ledBlink;
+    }
+    
+    Serial.println("");
+    Serial.println("WiFi connected");
+    
+    Serial.print("IP: ");
+    Serial.print(WiFi.localIP());
+    Serial.print("  Gateway: ");
+    Serial.println(WiFi.gatewayIP());
+
+    server.begin();
+
+    digitalWrite(PIN_LED, LOW); // LED on
+
+    sendStatus();
+
+    dockAngles.shoulder = deg_to_rad(180);
+    dockAngles.elbow = deg_to_rad(90);
 }
 
 void loop() 
@@ -152,6 +196,8 @@ void loop()
 
         handlePacket(nRead);
     }
+    
+    powerOk = digitalRead(PIN_5V_GOOD) && digitalRead(PIN_7V_GOOD);
 
     // check for responses from dynamixels
     int responseId = dynamixel_rcv();
@@ -163,7 +209,7 @@ void loop()
 
     //if( !(shoulder_status.last_pkt_acked && elbow_status.last_pkt_acked) ) return;
 
-    PathElement nextMove = path2.moveNext();
+    PathElement nextMove = path.moveNext();
     struct arm_angles ang;
     
     switch( nextMove.type )

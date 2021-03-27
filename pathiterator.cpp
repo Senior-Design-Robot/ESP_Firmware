@@ -133,6 +133,11 @@ PathElement PathQueueIterator::interpolate( const PathElement &target, const Pat
     return target;
 }
 
+int PathQueueIterator::remaining()
+{
+    return pathQueue.size();
+}
+
 void PathQueueIterator::addMove( float x, float y )
 {
     pathQueue.push_back(PathElement(PATH_MOVE, x, y));

@@ -79,6 +79,8 @@ private:
 public:
     PathQueueIterator();
 
+    int remaining();
+
     void addMove( float x, float y );
     void addPenMove( bool down );
     void clear();
