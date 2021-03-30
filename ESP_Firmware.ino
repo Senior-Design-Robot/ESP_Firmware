@@ -5,28 +5,45 @@
 #include "kinematics.h"
 #include "pathiterator.h"
 #include "dynamixel.h"
+#include "piwifi.h"
 
 #define PIN_LED D4
 #define PIN_5V_GOOD D5
 #define PIN_7V_GOOD D6
 #define PIN_PEN_SRV D8
 
-const int ESP_ID = 1;
+enum EspMode
+{
+    MODE_IDLE = 0,
+    MODE_DRAW = 1,
+    MODE_PAUSE = 2
+};
 
+const int ESP_ID = 1;
+EspMode currentMode = MODE_IDLE;
+
+// Wifi Interface
 const char* const ssid = "KATY-CORSAIR 0494";        // Enter SSID here
 const char* const password = "0Y46u%02";  //Enter Password here
 
+// transmission -> Pi
 IPAddress PI_SERVER(192,168,137,1);
 const unsigned int PI_PORT = 1896;
 WiFiClient client;
+char sendBuf[32];
 
+// reception <- Pi
 const unsigned int LISTEN_PORT = 1897;
 WiFiServer server(LISTEN_PORT);
+WiFiClient piRemote;
 
-char sendBuf[32];
-const unsigned int PKT_BUF_SIZE = 255;
-char pktBuf[PKT_BUF_SIZE];
+const unsigned int WIFI_RCV_SIZE = 255;
+char wifiRcvBuf[WIFI_RCV_SIZE];
+char *wifiReadLoc = wifiRcvBuf;
+int totalWifiRead = 0;
+uint8_t *wifiDataStart = (uint8_t *)wifiRcvBuf;
 
+// Drawing buffers
 PathQueueIterator path;
 CirclePathIterator path2(0,25,10);
 
@@ -37,6 +54,35 @@ Servo penActuator;
 bool powerOk;
 
 // Utility Functions
+//-------------------------------------------------------------------
+
+void setPenDown( bool extended )
+{
+    int setPoint = extended ? 180 : 0;
+    penActuator.write(setPoint);
+}
+
+void setAngles( const struct arm_angles& ang )
+{
+    uint16_t s = angle_to_goal_pos(ang.shoulder);
+    uint16_t e = angle_to_goal_pos(-ang.elbow);
+
+    write_synch_goal(s, e);
+
+    Serial.printf("Servos set to: s = %d, e = %d\n", s, e);
+}
+
+void gotoIdle()
+{
+    path.clear();
+    setPenDown(false);
+    setAngles(dockAngles);
+    currentMode = MODE_IDLE;
+
+    Serial.println("Start Idle Mode");
+}
+
+// WiFi Functions
 //-------------------------------------------------------------------
 
 void sendStatus()
@@ -60,48 +106,71 @@ void sendStatus()
     }
 }
 
-void handlePacket( int pktLength )
+void handleWifiPacket()
 {
-    // smallest possible is 2 digits separated by comma
-    if( pktLength < 3 ) return;
+    // smallest possible is 2 byte mode packet
+    if( totalWifiRead < 2 ) return;
 
-    // find comma delimiter
-    int delimIdx = -1;
-    for( int i = 1; i < (pktLength - 1); i++ )
+    
+
+    WPacketType type = (WPacketType)wifiRcvBuf[0];
+    EspMode newMode;
+
+    switch( type )
     {
-        if( pktBuf[i] == ',' )
-        {
-            delimIdx = i;
+        case WPKT_CHANGE_MODE:
+            newMode = (EspMode)wifiRcvBuf[1];
+            if( (newMode == MODE_IDLE) && (currentMode != MODE_IDLE) )
+            {
+                gotoIdle();
+            }
             break;
-        }
+
+        case WPKT_POINTS:
+            int nPts = wifiRcvBuf[1];
+
+            char *ptPtr = wifiRcvBuf + 2;
+            for( int i = 0; i < nPts; i++ )
+            {
+                if( (ptPtr + WIFI_PT_LEN) > (wifiRcvBuf + pktLength) )
+                {
+                    Serial.println("Wifi packet #pts exceeds received length");
+                    break;
+                }
+
+                // process a point/command
+                float x = getWifiPtX(ptPtr);
+                float y = getWifiPtY(ptPtr);
+
+                Serial.printf("Pkt: type=%d: x=%f, y=%f\n", (int)ptPtr[0], x, y);
+
+                switch( (PathElementType)ptPtr[0] )
+                {
+                    case PATH_PEN_UP:
+                        // pen up in current position
+                        path.addPenMove(PEN_UP);
+                        break;
+
+                    case PATH_PEN_DOWN:
+                        // make sure pen goes down in correct position
+                        path.addMove(x, y);
+                        path.addPenMove(PEN_DOWN);
+                        break;
+
+                    case PATH_MOVE:
+                        path.addMove(x, y);
+                        break;
+
+                    default:
+                        break;
+                }
+
+                // move to next point struct
+                ptPtr += WIFI_PT_LEN;
+            }
+
+            break;
     }
-
-    // no comma found
-    if( delimIdx < 0 ) return;
-
-    float x, y;
-    if( !parseFloatStrict(pktBuf, delimIdx, x) ) return;
-    if( !parseFloatStrict(pktBuf + delimIdx + 1, pktLength - delimIdx - 1, y) ) return;
-
-    // successfully parsed
-    Serial.printf("Good data: x = %f, y = %f\n", x, y);
-    path.addMove(x, y);
-}
-
-void setPenDown( bool extended )
-{
-    int setPoint = extended ? 180 : 0;
-    penActuator.write(setPoint);
-}
-
-void setAngles( const struct arm_angles& ang )
-{
-    uint16_t s = angle_to_goal_pos(ang.shoulder);
-    uint16_t e = angle_to_goal_pos(-ang.elbow);
-
-    write_synch_goal(s, e);
-
-    Serial.printf("Servos set to: s = %d, e = %d\n", s, e);
 }
 
 // Arduino Functions
@@ -171,30 +240,33 @@ void setup()
 
 void loop() 
 {
-    WiFiClient remote = server.available();
+    if( !piRemote || !piRemote.connected() )
+    {
+        WiFiClient piRemote = server.available();
+        wifiReadLoc = wifiRcvBuf;
+        totalWifiRead = 0;
+    }
     
-    if( remote )
+    if( piRemote && piRemote.connected() )
     {
         // received an incoming connection
-        int nRead = 0;
-        while( remote.connected() )
+        int toRead;
+
+        if( toRead = piRemote.available() )
         {
-            if( remote.available() )
+            if( toRead > (RCV_BUF_LEN - totalWifiRead) )
             {
-                nRead = remote.readBytesUntil('\n', pktBuf, PKT_BUF_SIZE - 1);
-                pktBuf[nRead] = '\0';
-                
-                // we only care about the first line
-                while( remote.available() ) remote.read(); // flush incoming buffer
-                remote.stop();
-                break;
+                toRead = RCV_BUF_LEN - totalWifiRead;
             }
+
+            int nRead = piRemote.readBytes(wifiReadLoc, toRead);
+            wifiReadLoc += nRead;
+            totalWifiRead += nRead;
+
+            Serial.printf("Received %d bytes\n", nRead);
         }
 
-        Serial.printf("Received %d bytes: ", nRead);
-        Serial.println(pktBuf);
-
-        handlePacket(nRead);
+        handleWifiPacket();
     }
     
     powerOk = digitalRead(PIN_5V_GOOD) && digitalRead(PIN_7V_GOOD);
@@ -208,6 +280,11 @@ void loop()
     }
 
     //if( !(shoulder_status.last_pkt_acked && elbow_status.last_pkt_acked) ) return;
+
+    if( currentMode == MODE_IDLE || currentMode == MODE_PAUSE )
+    {
+        return;
+    }
 
     PathElement nextMove = path.moveNext();
     struct arm_angles ang;

@@ -1,5 +1,5 @@
 #include "pathiterator.h"
-#include <cmath>
+#include <math.h>
 
 CirclePathIterator::CirclePathIterator( float centerX, float centerY, float radius ) :
     cX(centerX), cY(centerY), r(radius)
@@ -161,16 +161,25 @@ PathElement PathQueueIterator::moveNext()
     PathElement target;
     if( pathQueue.peek(target) )
     {
-        if( (lastMove.x == target.x) && (lastMove.y == target.y) )
+        if( (target.type == PATH_PEN_DOWN) || (target.type == PATH_PEN_UP) )
         {
-            // finished previous move, start new one
             pathQueue.pop(target);
-            if( !pathQueue.peek(target) ) return PathElement();
+            return target;
         }
+        else if( target.type == PATH_MOVE )
+        {
+            if( (lastMove.x == target.x) && (lastMove.y == target.y) )
+            {
+                // finished previous move, start new one
+                pathQueue.pop(target);
+                if( !pathQueue.peek(target) ) return PathElement();
+            }
 
-        // interpolate to current target
-        lastMove = interpolate(target, lastMove);
-        return lastMove;
+            // interpolate to current target
+            lastMove = interpolate(target, lastMove);
+            return lastMove;
+        }
     }
-    else return PathElement();
+    
+    return PathElement();
 }

@@ -29,9 +29,6 @@ void init_dyn_serial()
     xmit_buf[1] = 0xFF;
     xmit_buf[2] = 0xFD;
     xmit_buf[3] = 0x00; // reserved
-
-    pinMode(DRIVE_DIS_PIN, OUTPUT);
-    digitalWrite(DRIVE_DIS_PIN, HIGH);
 }
 
 static bool is_valid_header( uint8_t *pkt )
@@ -136,10 +133,8 @@ uint16_t angle_to_goal_pos( double angle )
 
 void start_send( size_t length )
 {
-    digitalWrite(DRIVE_DIS_PIN, LOW); // I'm the captain now
     Serial.write(xmit_buf, length);
     Serial.flush();
-    digitalWrite(DRIVE_DIS_PIN, HIGH);
 }
 
 void write_synch_goal( uint16_t shoulder_ang, uint16_t elbow_ang )

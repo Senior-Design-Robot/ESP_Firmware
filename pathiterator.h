@@ -2,6 +2,9 @@
 
 #include "kqueue.h"
 
+#define PEN_UP false
+#define PEN_DOWN true
+
 enum PathElementType
 {
     PATH_NONE = 0,

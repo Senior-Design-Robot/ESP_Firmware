@@ -3,7 +3,7 @@
 #define LEN_A 20.0
 #define LEN_B 20.0
 
-#include <cmath>
+#include <math.h>
 
 struct arm_angles
 {
