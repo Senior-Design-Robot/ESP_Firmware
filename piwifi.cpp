@@ -1,3 +1,4 @@
+#include "kinematics.h"
 #include "piwifi.h"
 
 
@@ -27,7 +28,8 @@ u32_t WPacketBuffer::read32Val( int start )
 
 float WPacketBuffer::readPtFloat( int idx )
 {
-    return (float)((double)read32Val(idx) / UINT32_MAX);
+    double value = read32Val(idx);
+    return (float)(value * (ARM_REACH / UINT32_MAX));
 }
 
 

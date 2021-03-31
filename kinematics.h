@@ -2,6 +2,7 @@
 
 #define LEN_A 20.0
 #define LEN_B 20.0
+#define ARM_REACH (LEN_A + LEN_B)
 
 #include <math.h>
 

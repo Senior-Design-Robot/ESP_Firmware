@@ -77,6 +77,8 @@ void setPenDown( bool extended )
 {
     int setPoint = extended ? 180 : 0;
     penActuator.write(setPoint);
+
+    Serial.printf("\nPen down: %d\n", extended);
 }
 
 void setAngles( const struct arm_angles& ang )
@@ -230,7 +232,7 @@ void setup()
     Serial.println("Voltage good!");
 
     // setup linear actuator
-    penActuator.attach(PIN_PEN_SRV, 1500, 2100); // microsec limits
+    penActuator.attach(PIN_PEN_SRV, 900, 2100); // microsec limits
     setPenDown(false);
     
     Serial.print("\nConnecting to ");
@@ -310,7 +312,7 @@ void loop()
         return;
     }
 
-    PathElement nextMove = path2.moveNext();
+    PathElement nextMove = path.moveNext();
     struct arm_angles ang;
     
     switch( nextMove.type )
@@ -325,8 +327,12 @@ void loop()
         break;
 
     case PATH_PEN_UP:
-    default:
         setPenDown(false);
+        break;
+
+    case PATH_NONE:
+    default:
+        gotoIdle();
         break;
     }
 
