@@ -1,43 +1,62 @@
 #pragma once
 
 #include "Arduino.h"
+#include "ESP8266WiFi.h"
+#include "pathiterator.h"
 
-#define WIFI_PT_LEN 9
+#define WPKT_HEAD_LEN 5
+#define WPKT_MODE_LEN (WPKT_HEAD_LEN + 1)
+#define WPKT_POINTS_LEN (WPKT_HEAD_LEN + 1)
+
+#define WFIELD_PKT_TYPE 4
+#define WFIELD_MODE 5
+#define WFIELD_N_PTS 5
+#define WFIELD_POINTS 6
+
+#define WPOINT_LEN 9
+#define WPOINT_X_OFFSET 1
+#define WPOINT_Y_OFFSET 5
 
 enum WPacketType : char
 {
     WPKT_NULL = 0,
-    WPKT_CHANGE_MODE = 1,
+    WPKT_MODE = 1,
     WPKT_POINTS = 2
 };
 
-bool is_wifi_header( uint8_t *pkt )
-{
-    if( pkt[0] != 0xFF ) return false;
-    if( pkt[1] != 0xFF ) return false;
-    if( pkt[2] != 0xFD ) return false;
-    if( pkt[3] == 0xFD ) return false; // byte stuffing, not header
-    return true;
-}
 
-static u32_t read32Val( uint8_t *bytestr )
+class WPacketBuffer
 {
-    u32_t value = bytestr[0];
-    value <<= 8;
-    value |= bytestr[1];
-    value <<= 8;
-    value |= bytestr[2];
-    value <<= 8;
-    value |= bytestr[3];
-    return value;
-}
+private:
+    static const int BUF_LEN = 512;
 
-static inline float getWifiPtX( char *ptStruct )
-{
-    return (float)read32Val((uint8_t *)ptStruct + 1) / UINT32_MAX;
-}
+    char buf[BUF_LEN];
+    int insIndex = 0;
+    int packetStart = 0;
 
-static inline float getWifiPtY( char *ptStruct )
-{
-    return (float)read32Val((uint8_t *)ptStruct + 5) / UINT32_MAX;
-}
+    bool isWifiHeader();
+    u32_t read32Val( int start );
+    float readPtFloat( int idx );
+
+public:
+    /** Flush any data in the buffer to handle a new connection */
+    void reset();
+
+    /** Get the byte value at the give offset in the current packet */
+    uint8_t packetByte( int idx );
+
+    /** Get the point struct starting at the given offset */
+    PathElement packetPoint( int idx );
+
+    /** Return the number of bytes waiting in the buffer */
+    int available();
+
+    /** Advance the ptr to the first valid packet & return the type */
+    WPacketType seekPacket();
+
+    /** Recieve any waiting data from a connection */
+    WPacketType tryReceiveData( WiFiClient &remote );
+
+    /** Jump the packet ptr forward the given length */
+    void munch( int length );
+};

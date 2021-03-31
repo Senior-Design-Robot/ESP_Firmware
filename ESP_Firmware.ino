@@ -37,11 +37,7 @@ const unsigned int LISTEN_PORT = 1897;
 WiFiServer server(LISTEN_PORT);
 WiFiClient piRemote;
 
-const unsigned int WIFI_RCV_SIZE = 255;
-char wifiRcvBuf[WIFI_RCV_SIZE];
-char *wifiReadLoc = wifiRcvBuf;
-int totalWifiRead = 0;
-uint8_t *wifiDataStart = (uint8_t *)wifiRcvBuf;
+WPacketBuffer wifiBuffer;
 
 // Drawing buffers
 PathQueueIterator path;
@@ -106,45 +102,33 @@ void sendStatus()
     }
 }
 
-void handleWifiPacket()
+void handleWifiPacket( WPacketType type )
 {
-    // smallest possible is 2 byte mode packet
-    if( totalWifiRead < 2 ) return;
-
-    
-
-    WPacketType type = (WPacketType)wifiRcvBuf[0];
     EspMode newMode;
 
     switch( type )
     {
-        case WPKT_CHANGE_MODE:
-            newMode = (EspMode)wifiRcvBuf[1];
+        case WPKT_MODE:
+            newMode = (EspMode)wifiBuffer.packetByte(WFIELD_MODE);
             if( (newMode == MODE_IDLE) && (currentMode != MODE_IDLE) )
             {
                 gotoIdle();
             }
+
+            wifiBuffer.munch(WPKT_MODE_LEN);
             break;
 
         case WPKT_POINTS:
-            int nPts = wifiRcvBuf[1];
+            int nPts = wifiBuffer.packetByte(WFIELD_N_PTS);
 
-            char *ptPtr = wifiRcvBuf + 2;
             for( int i = 0; i < nPts; i++ )
             {
-                if( (ptPtr + WIFI_PT_LEN) > (wifiRcvBuf + pktLength) )
-                {
-                    Serial.println("Wifi packet #pts exceeds received length");
-                    break;
-                }
-
                 // process a point/command
-                float x = getWifiPtX(ptPtr);
-                float y = getWifiPtY(ptPtr);
+                PathElement nextPoint = wifiBuffer.packetPoint(WFIELD_POINTS + (WPOINT_LEN * (i - 1)));
 
-                Serial.printf("Pkt: type=%d: x=%f, y=%f\n", (int)ptPtr[0], x, y);
+                Serial.printf("Pkt: type=%d: x=%f, y=%f\n", nextPoint.type, nextPoint.x, nextPoint.y);
 
-                switch( (PathElementType)ptPtr[0] )
+                switch( nextPoint.type )
                 {
                     case PATH_PEN_UP:
                         // pen up in current position
@@ -153,21 +137,20 @@ void handleWifiPacket()
 
                     case PATH_PEN_DOWN:
                         // make sure pen goes down in correct position
-                        path.addMove(x, y);
+                        path.addMove(nextPoint.x, nextPoint.y);
                         path.addPenMove(PEN_DOWN);
                         break;
 
                     case PATH_MOVE:
-                        path.addMove(x, y);
+                        path.addMove(nextPoint.x, nextPoint.y);
                         break;
 
                     default:
                         break;
                 }
-
-                // move to next point struct
-                ptPtr += WIFI_PT_LEN;
             }
+
+            wifiBuffer.munch(WPKT_POINTS_LEN + (WPOINT_LEN * nPts));
 
             break;
     }
@@ -243,30 +226,18 @@ void loop()
     if( !piRemote || !piRemote.connected() )
     {
         WiFiClient piRemote = server.available();
-        wifiReadLoc = wifiRcvBuf;
-        totalWifiRead = 0;
+        wifiBuffer.reset();
     }
     
     if( piRemote && piRemote.connected() )
     {
         // received an incoming connection
-        int toRead;
+        WPacketType pktType = wifiBuffer.tryReceiveData(piRemote);
 
-        if( toRead = piRemote.available() )
+        if( pktType != WPKT_NULL )
         {
-            if( toRead > (RCV_BUF_LEN - totalWifiRead) )
-            {
-                toRead = RCV_BUF_LEN - totalWifiRead;
-            }
-
-            int nRead = piRemote.readBytes(wifiReadLoc, toRead);
-            wifiReadLoc += nRead;
-            totalWifiRead += nRead;
-
-            Serial.printf("Received %d bytes\n", nRead);
+            handleWifiPacket(pktType);
         }
-
-        handleWifiPacket();
     }
     
     powerOk = digitalRead(PIN_5V_GOOD) && digitalRead(PIN_7V_GOOD);
