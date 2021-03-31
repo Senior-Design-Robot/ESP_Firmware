@@ -104,6 +104,9 @@ void start_send( size_t length );
 /** Convert a servo angle in radians to dynamixel units */
 uint16_t angle_to_goal_pos( double angle );
 
+/** Generic write to both motors synchronously */
+void synch_write_value( xl320_addr addr, uint16_t width, uint16_t shoulder_val, uint16_t elbow_val );
+
 /** Transmit a synch write packet to set both shoulder and elbow angles */
 void write_synch_goal( uint16_t shoulder_ang, uint16_t elbow_ang );
 

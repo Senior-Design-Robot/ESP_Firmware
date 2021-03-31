@@ -5,11 +5,13 @@
 #include "pathiterator.h"
 
 #define WPKT_HEAD_LEN 5
-#define WPKT_MODE_LEN (WPKT_HEAD_LEN + 1)
+#define WPKT_SETTING_LEN (WPKT_HEAD_LEN + 2)
 #define WPKT_POINTS_LEN (WPKT_HEAD_LEN + 1)
 
 #define WFIELD_PKT_TYPE 4
-#define WFIELD_MODE 5
+#define WFIELD_SETTING_ID 5
+#define WFIELD_SETTING_VAL 6
+
 #define WFIELD_N_PTS 5
 #define WFIELD_POINTS 6
 
@@ -20,7 +22,7 @@
 enum WPacketType : char
 {
     WPKT_NULL = 0,
-    WPKT_MODE = 1,
+    WPKT_SETTING = 1,
     WPKT_POINTS = 2
 };
 

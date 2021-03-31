@@ -12,6 +12,12 @@
 #define PIN_7V_GOOD D6
 #define PIN_PEN_SRV D8
 
+enum EspSetting
+{
+    SETTING_MODE = 1,
+    SETTING_SPEED = 2
+};
+
 enum EspMode
 {
     MODE_IDLE = 0,
@@ -19,8 +25,23 @@ enum EspMode
     MODE_PAUSE = 2
 };
 
+enum EspDrawSpeed
+{
+    DSPEED_MAX = 0,
+    DSPEED_25 = 1,
+    DSPEED_50 = 2,
+    DSPEED_75 = 3,
+    DSPEED_100 = 4
+};
+
+uint16_t drawSpeedLUT[]
+{
+    0, 256, 512, 768, 1023
+};
+
 const int ESP_ID = 1;
 EspMode currentMode = MODE_IDLE;
+EspDrawSpeed currentSpeed = DSPEED_MAX;
 
 // Wifi Interface
 const char* const ssid = "KATY-CORSAIR 0494";        // Enter SSID here
@@ -65,7 +86,7 @@ void setAngles( const struct arm_angles& ang )
 
     write_synch_goal(s, e);
 
-    Serial.printf("Servos set to: s = %d, e = %d\n", s, e);
+    //Serial.printf("Servos set to: s = %d, e = %d\n", s, e);
 }
 
 void gotoIdle()
@@ -76,6 +97,40 @@ void gotoIdle()
     currentMode = MODE_IDLE;
 
     Serial.println("Start Idle Mode");
+}
+
+void changeSetting( EspSetting setting, uint8_t value )
+{
+    if( setting == SETTING_MODE )
+    {
+        EspMode newMode = (EspMode)value;
+        Serial.printf("Set mode to %d\n", value);
+
+        if( newMode != currentMode )
+        {
+            switch( newMode )
+            {
+                case MODE_IDLE:
+                    gotoIdle();
+                    break;
+
+                default:
+                    currentMode = newMode;
+                    break;
+            }
+        }
+    }
+    else if( setting == SETTING_SPEED )
+    {
+        EspDrawSpeed newSpeed = (EspDrawSpeed)value;
+        Serial.printf("Set speed to %d/4\n", value);
+
+        if( (newSpeed != currentSpeed) && (newSpeed <= DSPEED_100) )
+        {
+            uint16_t speedRegVal = drawSpeedLUT[value];
+            synch_write_value(MOVE_SPEED, 2, speedRegVal, speedRegVal);
+        }
+    }
 }
 
 // WiFi Functions
@@ -104,18 +159,11 @@ void sendStatus()
 
 void handleWifiPacket( WPacketType type )
 {
-    EspMode newMode;
-
     switch( type )
     {
-        case WPKT_MODE:
-            newMode = (EspMode)wifiBuffer.packetByte(WFIELD_MODE);
-            if( (newMode == MODE_IDLE) && (currentMode != MODE_IDLE) )
-            {
-                gotoIdle();
-            }
-
-            wifiBuffer.munch(WPKT_MODE_LEN);
+        case WPKT_SETTING:
+            changeSetting((EspSetting)wifiBuffer.packetByte(WFIELD_SETTING_ID), (uint8_t)wifiBuffer.packetByte(WFIELD_SETTING_VAL));
+            wifiBuffer.munch(WPKT_SETTING_LEN);
             break;
 
         case WPKT_POINTS:
@@ -124,9 +172,9 @@ void handleWifiPacket( WPacketType type )
             for( int i = 0; i < nPts; i++ )
             {
                 // process a point/command
-                PathElement nextPoint = wifiBuffer.packetPoint(WFIELD_POINTS + (WPOINT_LEN * (i - 1)));
+                PathElement nextPoint = wifiBuffer.packetPoint(WFIELD_POINTS + (WPOINT_LEN * i));
 
-                Serial.printf("Pkt: type=%d: x=%f, y=%f\n", nextPoint.type, nextPoint.x, nextPoint.y);
+                Serial.printf("Rcv Point: type=%d: x=%f, y=%f\n", nextPoint.type, nextPoint.x, nextPoint.y);
 
                 switch( nextPoint.type )
                 {
@@ -223,9 +271,14 @@ void setup()
 
 void loop() 
 {
+    if( piRemote && !piRemote.connected() )
+    {
+        piRemote.stop();
+    }
+
     if( !piRemote || !piRemote.connected() )
     {
-        WiFiClient piRemote = server.available();
+        piRemote = server.available();
         wifiBuffer.reset();
     }
     
@@ -257,7 +310,7 @@ void loop()
         return;
     }
 
-    PathElement nextMove = path.moveNext();
+    PathElement nextMove = path2.moveNext();
     struct arm_angles ang;
     
     switch( nextMove.type )

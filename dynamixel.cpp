@@ -133,8 +133,58 @@ uint16_t angle_to_goal_pos( double angle )
 
 void start_send( size_t length )
 {
+    Serial.flush();
     Serial.write(xmit_buf, length);
     Serial.flush();
+}
+
+void synch_write_value( xl320_addr addr, uint16_t width, uint16_t shoulder_val, uint16_t elbow_val )
+{
+    // H1 H2 H3 RSV ID LL LH INST ADDL ADDH DLL DLH ID1 D1+ ID2 D2+ CRC1 CRC2
+    //|------------|--|-----|----|---------|-------|-------|-------|---------|
+    // 0            4  5     7    8         10      12  13  14  15  16         min len = 16, add width * 2
+    uint16_t TOTAL_LEN = 16 + (width * 2);
+    uint16_t LEN = TOTAL_LEN - HEADER_LEN;
+    uint16_t CRC_LEN = TOTAL_LEN - 2;
+
+    xmit_buf[PKT_ID] = BCAST_ID;
+    set_pkt_short(xmit_buf, PKT_LEN, LEN);
+    xmit_buf[PKT_INSTRUCT] = INST_SYN_WRITE;
+
+    set_pkt_short(xmit_buf, PARAM(1), addr);
+    set_pkt_short(xmit_buf, PARAM(3), width);
+
+    int elbow_data_start;
+
+    // shoulder
+    xmit_buf[PARAM(5)] = shoulder_addr;
+    if( width < 2 )
+    {
+        xmit_buf[PARAM(6)] = shoulder_val;
+        elbow_data_start = PARAM(7);
+    }
+    else
+    {
+        set_pkt_short(xmit_buf, PARAM(6), shoulder_val);
+        elbow_data_start = PARAM(8);
+    }
+
+    // elbow
+    xmit_buf[elbow_data_start] = elbow_addr;
+    if( width < 2 )
+    {
+        xmit_buf[elbow_data_start + 1] = elbow_val;
+    }
+    else
+    {
+        set_pkt_short(xmit_buf, elbow_data_start + 1, elbow_val);
+    }
+
+    // CRC
+    unsigned short crc = update_crc(0, xmit_buf, CRC_LEN);
+    set_pkt_short(xmit_buf, elbow_data_start + width + 1, crc);
+
+    start_send(TOTAL_LEN);
 }
 
 void write_synch_goal( uint16_t shoulder_ang, uint16_t elbow_ang )
@@ -142,6 +192,10 @@ void write_synch_goal( uint16_t shoulder_ang, uint16_t elbow_ang )
     // H1 H2 H3 RSV ID LL LH INST ADDL ADDH DLL DLH ID1 D1L D1H ID2 D2L D2H CRC1 CRC2
     //|------------|--|-----|----|---------|-------|-----------|-----------|---------|
     // 0            4  5     7    8         10      12  13      15  16      18         total len = 20
+
+    synch_write_value(GOAL_POSITION, 2, shoulder_ang, elbow_ang);
+
+    /*
     const uint16_t TOTAL_LEN = 20;
     const uint16_t LEN = TOTAL_LEN - HEADER_LEN;
 
@@ -168,6 +222,7 @@ void write_synch_goal( uint16_t shoulder_ang, uint16_t elbow_ang )
 
     shoulder_status.last_pkt_acked = false;
     elbow_status.last_pkt_acked = false;
+    */
 }
 
 void write_torque_en( bool enabled )
@@ -175,32 +230,9 @@ void write_torque_en( bool enabled )
     // H1 H2 H3 RSV ID LL LH INST ADDL ADDH DLL DLH ID1 D1 ID2 D2 CRCL CRCH
     //|------------|--|-----|----|---------|-------|------|------|---------|
     // 0            4  5     7    8         10      12  13 14  15 16         len = 18
-    const uint16_t TOTAL_LEN = 18;
-    const uint16_t LEN = TOTAL_LEN - HEADER_LEN;
-    
-    xmit_buf[PKT_ID] = BCAST_ID;
-    set_pkt_short(xmit_buf, PKT_LEN, LEN);
-    xmit_buf[PKT_INSTRUCT] = INST_SYN_WRITE;
 
-    set_pkt_short(xmit_buf, PARAM(1), TORQUE_EN); // addr = torque enable (24)
-    set_pkt_short(xmit_buf, PARAM(3), 1);  // data len = 1 byte
-
-    // shoulder
-    xmit_buf[PARAM(5)] = shoulder_addr;
-    xmit_buf[PARAM(6)] = (enabled ? 1 : 0);
-
-    // elbow
-    xmit_buf[PARAM(7)] = elbow_addr;
-    xmit_buf[PARAM(8)] = (enabled ? 1 : 0);
-
-    // CRC
-    unsigned short crc = update_crc(0, xmit_buf, TOTAL_LEN - 2);
-    set_pkt_short(xmit_buf, PARAM(9), crc);
-
-    start_send(TOTAL_LEN);
-
-    shoulder_status.last_pkt_acked = false;
-    elbow_status.last_pkt_acked = false;
+    uint16_t write_val = enabled ? 1 : 0;
+    synch_write_value(TORQUE_EN, 1, write_val, write_val);
 }
 
 void read_value( uint8_t device, xl320_addr addr, uint16_t width )

@@ -27,7 +27,7 @@ u32_t WPacketBuffer::read32Val( int start )
 
 float WPacketBuffer::readPtFloat( int idx )
 {
-    return (float)read32Val(idx) / UINT32_MAX;
+    return (float)((double)read32Val(idx) / UINT32_MAX);
 }
 
 
@@ -74,7 +74,7 @@ WPacketType WPacketBuffer::seekPacket()
     while( available() >= 4 )
     {
         if( isWifiHeader() ) break;
-        packetStart++;
+        packetStart = (packetStart + 1) % BUF_LEN;
     }
 
     int avail = available();
@@ -89,10 +89,12 @@ WPacketType WPacketBuffer::seekPacket()
     }
     else
     {
+        //Serial.printf("Packet avail: %d\n", avail);
+
         WPacketType type = (WPacketType)packetByte(4);
-        if( type == WPKT_MODE )
+        if( type == WPKT_SETTING )
         {
-            return (avail >= WPKT_MODE_LEN) ? WPKT_MODE : WPKT_NULL;
+            return (avail >= WPKT_SETTING_LEN) ? WPKT_SETTING : WPKT_NULL;
         }
         if( type == WPKT_POINTS )
         {
