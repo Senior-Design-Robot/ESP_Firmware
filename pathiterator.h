@@ -8,9 +8,10 @@
 enum PathElementType
 {
     PATH_NONE = 0,
-    PATH_MOVE,
-    PATH_PEN_UP,
-    PATH_PEN_DOWN
+    PATH_MOVE = 1,
+    PATH_PEN_UP = 2,
+    PATH_PEN_DOWN = 3,
+    PATH_END = 4
 };
 
 typedef struct PathElement
@@ -86,6 +87,7 @@ public:
 
     void addMove( float x, float y );
     void addPenMove( bool down );
+    void addElement( const PathElement &new_elem );
     void clear();
 
     PathElement moveNext();

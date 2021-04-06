@@ -151,6 +151,11 @@ void PathQueueIterator::addPenMove( bool down )
     pathQueue.push_back(PathElement(type, lastLoc.x, lastLoc.y));
 }
 
+void PathQueueIterator::addElement( const PathElement &new_elem )
+{
+    pathQueue.push_back(new_elem);
+}
+
 void PathQueueIterator::clear()
 {
     pathQueue.clear();
@@ -161,13 +166,15 @@ PathElement PathQueueIterator::moveNext()
     PathElement target;
     if( pathQueue.peek(target) )
     {
-        if( (target.type == PATH_PEN_DOWN) || (target.type == PATH_PEN_UP) )
+        if( target.type == PATH_PEN_UP )
         {
+            // pen up is always immediate
             pathQueue.pop(target);
             return target;
         }
-        else if( target.type == PATH_MOVE )
+        else
         {
+            // other moves are interpolated
             if( (lastMove.x == target.x) && (lastMove.y == target.y) )
             {
                 // finished previous move, start new one

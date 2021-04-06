@@ -140,9 +140,10 @@ void changeSetting( EspSetting setting, uint8_t value )
 
 void sendStatus()
 {
-    int nWrite = sprintf(sendBuf, "1,%d,%d,%d,%d,%d,%d\n",
+    int nWrite = sprintf(sendBuf, "1,%d,%d,%d,%d,%d,%d,%d\n",
         ESP_ID,
         powerOk,
+        currentMode,
         shoulder_status.last_status,
         elbow_status.last_status,
         0,
@@ -178,26 +179,7 @@ void handleWifiPacket( WPacketType type )
 
                 Serial.printf("Rcv Point: type=%d: x=%f, y=%f\n", nextPoint.type, nextPoint.x, nextPoint.y);
 
-                switch( nextPoint.type )
-                {
-                    case PATH_PEN_UP:
-                        // pen up in current position
-                        path.addPenMove(PEN_UP);
-                        break;
-
-                    case PATH_PEN_DOWN:
-                        // make sure pen goes down in correct position
-                        path.addMove(nextPoint.x, nextPoint.y);
-                        path.addPenMove(PEN_DOWN);
-                        break;
-
-                    case PATH_MOVE:
-                        path.addMove(nextPoint.x, nextPoint.y);
-                        break;
-
-                    default:
-                        break;
-                }
+                path.addElement(nextPoint);
             }
 
             wifiBuffer.munch(WPKT_POINTS_LEN + (WPOINT_LEN * nPts));
@@ -330,9 +312,13 @@ void loop()
         setPenDown(false);
         break;
 
+    case PATH_END:
+        gotoIdle();
+        break;
+
     case PATH_NONE:
     default:
-        gotoIdle();
+        currentMode = MODE_PAUSE;
         break;
     }
 
