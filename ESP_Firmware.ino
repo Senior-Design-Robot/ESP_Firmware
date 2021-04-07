@@ -1,4 +1,5 @@
 #include <ESP8266WiFi.h>
+#include <ESPAsyncTCP.h>
 #include <Servo.h>
 
 #include "util.h"
@@ -55,10 +56,7 @@ char sendBuf[32];
 
 // reception <- Pi
 const unsigned int LISTEN_PORT = 1897;
-WiFiServer server(LISTEN_PORT);
-WiFiClient piRemote;
-
-WPacketBuffer wifiBuffer;
+AsyncServer server(LISTEN_PORT);
 
 // Drawing buffers
 PathQueueIterator path;
@@ -243,6 +241,8 @@ void setup()
     Serial.print("  Gateway: ");
     Serial.println(WiFi.gatewayIP());
 
+    setPacketCallback(handleWifiPacket);
+    server.onClient(&onNewClient, &server);
     server.begin();
 
     digitalWrite(PIN_LED, LOW); // LED on
@@ -255,28 +255,6 @@ void setup()
 
 void loop() 
 {
-    if( piRemote && !piRemote.connected() )
-    {
-        piRemote.stop();
-    }
-
-    if( !piRemote || !piRemote.connected() )
-    {
-        piRemote = server.available();
-        wifiBuffer.reset();
-    }
-    
-    if( piRemote && piRemote.connected() )
-    {
-        // received an incoming connection
-        WPacketType pktType = wifiBuffer.tryReceiveData(piRemote);
-
-        if( pktType != WPKT_NULL )
-        {
-            handleWifiPacket(pktType);
-        }
-    }
-    
     powerOk = digitalRead(PIN_5V_GOOD) && digitalRead(PIN_7V_GOOD);
 
     // check for responses from dynamixels

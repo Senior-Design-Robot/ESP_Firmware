@@ -2,6 +2,7 @@
 
 #include "Arduino.h"
 #include "ESP8266WiFi.h"
+#include <ESPAsyncTCP.h>
 #include "pathiterator.h"
 
 #define WPKT_HEAD_LEN 5
@@ -25,6 +26,15 @@ enum WPacketType : char
     WPKT_SETTING = 1,
     WPKT_POINTS = 2
 };
+
+void onClientData( void *arg, AsyncClient *client, void *data, size_t len );
+void onClientError( void *arg, AsyncClient *client, int8_t error );
+void onClientDisconnect( void *arg, AsyncClient *client );
+void onClientTimeOut( void *arg, AsyncClient *client, uint32_t time );
+
+void onNewClient( void *arg, AsyncClient *client );
+
+void setPacketCallback( void (*callback_func)( WPacketType ) );
 
 
 class WPacketBuffer
@@ -56,9 +66,12 @@ public:
     /** Advance the ptr to the first valid packet & return the type */
     WPacketType seekPacket();
 
-    /** Recieve any waiting data from a connection */
-    WPacketType tryReceiveData( WiFiClient &remote );
+    /** Recieve waiting data from a connection */
+    WPacketType acceptData( uint8_t *data, int len );
 
     /** Jump the packet ptr forward the given length */
     void munch( int length );
 };
+
+
+extern WPacketBuffer wifiBuffer;
