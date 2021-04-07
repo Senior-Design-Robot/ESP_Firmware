@@ -1,6 +1,49 @@
 #include "kinematics.h"
 #include "piwifi.h"
 
+WPacketBuffer wifiBuffer;
+void (*packetHandler)( WPacketType );
+
+
+void onClientData( void *arg, AsyncClient *client, void *data, size_t len )
+{
+    if( len > 0 )
+    {
+        WPacketType type = wifiBuffer.acceptData((uint8_t *)data, (int)len);
+        if( type != WPKT_NULL )
+        {
+            packetHandler(type);
+        }
+    }
+}
+
+void onClientError( void *arg, AsyncClient *client, int8_t error )
+{
+    Serial.printf("\nConnection error: %s\n", client->errorToString(error));
+}
+
+void onClientDisconnect( void *arg, AsyncClient *client )
+{
+
+}
+
+void onClientTimeOut( void *arg, AsyncClient *client, uint32_t time )
+{
+    Serial.printf("\nClient timed out\n");
+}
+
+void onNewClient( void *arg, AsyncClient *client )
+{
+    client->onData(&onClientData, nullptr);
+    client->onError(&onClientError, nullptr);
+    client->onDisconnect(&onClientDisconnect, nullptr);
+    client->onTimeout(&onClientTimeOut, nullptr);
+}
+
+void setPacketCallback( void (*callback_func)( WPacketType ) )
+{
+    packetHandler = callback_func;
+}
 
 // Private Members
 //-----------------------------------------------------------------
@@ -109,41 +152,40 @@ WPacketType WPacketBuffer::seekPacket()
     }
 }
 
-WPacketType WPacketBuffer::tryReceiveData( WiFiClient &remote )
+WPacketType WPacketBuffer::acceptData( uint8_t *data, int toRead )
 {
-    int toRead, remainRead, availSpace, nRead;
+    int availSpace = BUF_LEN - insIndex;
+    int remainRead, totalRead;
 
-    if( toRead = remote.available() )
+    if( toRead > availSpace )
     {
-        availSpace = BUF_LEN - insIndex;
-        if( toRead > availSpace )
-        {
-            remainRead = toRead - availSpace;
-            toRead = availSpace;
-        }
-        else
-        {
-            remainRead = 0;
-        }
-
-        nRead = remote.readBytes(buf + insIndex, toRead);
-
-        if( remainRead > 0 )
-        {
-            // only read up to start of data
-            toRead = (remainRead > packetStart) ? packetStart : remainRead;
-            int lastRead = remote.readBytes(buf, toRead);
-            insIndex = lastRead;
-        }
-        else
-        {
-            insIndex += nRead;
-        }
-
-        Serial.printf("Received %d bytes\n", nRead);
-
-        return seekPacket();
+        remainRead = toRead - availSpace;
+        toRead = availSpace;
     }
+    else
+    {
+        remainRead = 0;
+    }
+
+    memcpy(buf + insIndex, data, toRead);
+    totalRead += toRead;
+
+    if( remainRead > 0 )
+    {
+        // only read up to start of data
+        toRead = (remainRead > packetStart) ? packetStart : remainRead;
+        memcpy(buf, data + totalRead, toRead);
+        insIndex = toRead;
+        totalRead += toRead;
+    }
+    else
+    {
+        insIndex += toRead;
+    }
+
+    Serial.printf("Received %d bytes\n", totalRead);
+
+    return seekPacket();
 }
 
 void WPacketBuffer::munch( int length )
