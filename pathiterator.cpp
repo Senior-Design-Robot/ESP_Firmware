@@ -166,11 +166,11 @@ PathElement PathQueueIterator::moveNext()
     PathElement target;
     if( pathQueue.peek(target) )
     {
-        if( target.type == PATH_PEN_UP )
+        if( target.type != PATH_MOVE )
         {
             // pen up is always immediate
-            pathQueue.pop(target);
-            return target;
+            pathQueue.pop(lastMove);
+            return lastMove;
         }
         else
         {

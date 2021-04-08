@@ -5,6 +5,8 @@
 #define PEN_UP false
 #define PEN_DOWN true
 
+#define MIN_PATH_FILL 15
+
 enum PathElementType
 {
     PATH_NONE = 0,

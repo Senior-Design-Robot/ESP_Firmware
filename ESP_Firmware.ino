@@ -13,6 +13,10 @@
 #define PIN_7V_GOOD D6
 #define PIN_PEN_SRV D8
 
+#define IDLE_STATUS_DELAY 4000ul
+#define PATH_STATUS_DELAY 500ul
+#define PATH_INTERVAL 100ul
+
 enum EspSetting
 {
     SETTING_MODE = 1,
@@ -43,6 +47,7 @@ uint16_t drawSpeedLUT[]
 const int ESP_ID = 1;
 EspMode currentMode = MODE_IDLE;
 EspDrawSpeed currentSpeed = DSPEED_MAX;
+bool eStop = false;
 
 // Wifi Interface
 const char* const ssid = "KATY-CORSAIR 0494";        // Enter SSID here
@@ -53,6 +58,9 @@ IPAddress PI_SERVER(192,168,137,1);
 const unsigned int PI_PORT = 1896;
 WiFiClient client;
 char sendBuf[32];
+
+unsigned long lastStatusTime = 0;
+unsigned long lastPathTime = 0;
 
 // reception <- Pi
 const unsigned int LISTEN_PORT = 1897;
@@ -169,13 +177,14 @@ void handleWifiPacket( WPacketType type )
 
         case WPKT_POINTS:
             int nPts = wifiBuffer.packetByte(WFIELD_N_PTS);
+            Serial.printf("Received %d points\n", nPts);
 
             for( int i = 0; i < nPts; i++ )
             {
                 // process a point/command
                 PathElement nextPoint = wifiBuffer.packetPoint(WFIELD_POINTS + (WPOINT_LEN * i));
 
-                Serial.printf("Rcv Point: type=%d: x=%f, y=%f\n", nextPoint.type, nextPoint.x, nextPoint.y);
+                //Serial.printf("Rcv Point: type=%d: x=%f, y=%f\n", nextPoint.type, nextPoint.x, nextPoint.y);
 
                 path.addElement(nextPoint);
             }
@@ -256,6 +265,33 @@ void setup()
 void loop() 
 {
     powerOk = digitalRead(PIN_5V_GOOD) && digitalRead(PIN_7V_GOOD);
+    if( !powerOk )
+    {
+        if( !eStop )
+        {
+            Serial.printf("Power failure! Stopping program");
+            currentMode = MODE_IDLE;
+            path.clear();
+            eStop = true;
+        }
+    }
+    else
+    {
+        eStop = false;
+    }
+
+    unsigned long currentTime = millis();
+    unsigned long deltaStatusTime = currentTime - lastStatusTime;
+
+    bool forcePathStatus = (currentMode == MODE_DRAW) && (path.remaining() < MIN_PATH_FILL) && (deltaStatusTime >= PATH_STATUS_DELAY);
+    
+    if( forcePathStatus || (deltaStatusTime >= IDLE_STATUS_DELAY) )
+    {
+        sendStatus();
+        lastStatusTime = currentTime;
+    }
+
+    if( eStop ) return;
 
     // check for responses from dynamixels
     int responseId = dynamixel_rcv();
@@ -265,16 +301,24 @@ void loop()
         Serial.printf("Received response from %d\n", responseId);
     }
 
-    //if( !(shoulder_status.last_pkt_acked && elbow_status.last_pkt_acked) ) return;
-
+    // check whether we're drawing
     if( currentMode == MODE_IDLE || currentMode == MODE_PAUSE )
     {
         return;
     }
 
+    // check path hold-off
+    if( (currentTime - lastPathTime) < PATH_INTERVAL )
+    {
+        return;
+    }
+    lastPathTime = currentTime;
+
     PathElement nextMove = path.moveNext();
     struct arm_angles ang;
     
+    Serial.printf("\nNext move: %d, %f, %f\t", nextMove.type, nextMove.x, nextMove.y);
+
     switch( nextMove.type )
     {
     case PATH_MOVE:
@@ -283,6 +327,8 @@ void loop()
         break;
 
     case PATH_PEN_DOWN:
+        ang = calculate_angles(nextMove.x, nextMove.y);
+        setAngles(ang);
         setPenDown(true);
         break;
 
@@ -292,6 +338,7 @@ void loop()
 
     case PATH_END:
         gotoIdle();
+        sendStatus(); // signal that we finished :D
         break;
 
     case PATH_NONE:
@@ -299,6 +346,4 @@ void loop()
         currentMode = MODE_PAUSE;
         break;
     }
-
-    //delay(5);
 }

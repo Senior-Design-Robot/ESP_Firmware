@@ -59,13 +59,13 @@ bool WPacketBuffer::isWifiHeader()
 
 u32_t WPacketBuffer::read32Val( int start )
 {
-    u32_t value = packetByte(0);
+    u32_t value = packetByte(start);
     value <<= 8;
-    value |= packetByte(1);
+    value |= packetByte(start + 1);
     value <<= 8;
-    value |= packetByte(2);
+    value |= packetByte(start + 2);
     value <<= 8;
-    value |= packetByte(3);
+    value |= packetByte(start + 3);
     return value;
 }
 
