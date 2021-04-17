@@ -30,7 +30,7 @@ struct arm_angles calculate_angles( float x, float y )
 {
     struct arm_angles ang;
 
-    double cosb = calc_cosbeta(-y, x);
+    double cosb = calc_cosbeta(x, y);
     double b = -acos(cosb);
     
     ang.shoulder = (float)calc_alpha(-y, x, b, cosb) + M_PI_2;

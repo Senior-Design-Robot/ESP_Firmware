@@ -73,8 +73,8 @@ extern uint8_t rcv_buf[];
 
 //extern SoftwareSerial dyn_serial;
 
-const double DYN_ANG_MIN = 0.0;
-const double DYN_ANG_MAX = 5.23599; // 300 degrees
+const double DYN_ANG_MIN = M_PI / 6; // 30 degrees
+const double DYN_ANG_MAX = M_PI * 11 / 6; // 330 degrees
 
 const int DYN_GOAL_MAX = 1023;
 
@@ -101,8 +101,11 @@ int dynamixel_rcv();
 /** Queue a packet from the buffer and start transmission */
 void start_send( size_t length );
 
-/** Convert a servo angle in radians to dynamixel units */
-uint16_t angle_to_goal_pos( double angle );
+/** Convert shoulder angle in radians to dynamixel units */
+uint16_t shoulder_to_goal_pos( double angle );
+
+/** Convert elbow angle in radians to dynamixel units */
+uint16_t elbow_to_goal_pos( double angle );
 
 /** Generic write to both motors synchronously */
 void synch_write_value( xl320_addr addr, uint16_t width, uint16_t shoulder_val, uint16_t elbow_val );

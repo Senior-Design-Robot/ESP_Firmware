@@ -48,7 +48,8 @@ private:
 
     bool isWifiHeader();
     u32_t read32Val( int start );
-    float readPtFloat( int idx );
+    float readPtX( int idx );
+    float readPtY( int idx );
 
 public:
     /** Flush any data in the buffer to handle a new connection */

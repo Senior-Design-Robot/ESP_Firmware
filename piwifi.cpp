@@ -69,7 +69,13 @@ u32_t WPacketBuffer::read32Val( int start )
     return value;
 }
 
-float WPacketBuffer::readPtFloat( int idx )
+float WPacketBuffer::readPtX( int idx )
+{
+    double value = read32Val(idx);
+    return (float)((value * ((ARM_REACH * 2) / UINT32_MAX)) - ARM_REACH);
+}
+
+float WPacketBuffer::readPtY( int idx )
 {
     double value = read32Val(idx);
     return (float)(value * (ARM_REACH / UINT32_MAX));
@@ -94,8 +100,10 @@ uint8_t WPacketBuffer::packetByte( int idx )
 PathElement WPacketBuffer::packetPoint( int idx )
 {
     PathElementType type = (PathElementType)packetByte(idx);
-    float x = readPtFloat(idx + WPOINT_X_OFFSET);
-    float y = readPtFloat(idx + WPOINT_Y_OFFSET);
+
+    // center x = 0, y = 0 on arm base for kinematics. Left of arm is -x
+    float x = readPtX(idx + WPOINT_X_OFFSET);
+    float y = readPtY(idx + WPOINT_Y_OFFSET);
 
     return PathElement(type, x, y);
 }

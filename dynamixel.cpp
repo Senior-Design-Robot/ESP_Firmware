@@ -124,8 +124,23 @@ int dynamixel_rcv()
     return recv_addr;
 }
 
-uint16_t angle_to_goal_pos( double angle )
+uint16_t shoulder_to_goal_pos( double angle )
 {
+    constexpr double OFF_240 = M_PI * 4 / 3;
+
+    // dyn_angle = 240 - kinematic_shoulder
+    angle = OFF_240 - angle;
+    double norm = (angle - DYN_ANG_MIN) / (DYN_ANG_MAX - DYN_ANG_MIN);
+    long mapped = lround(norm * (DYN_GOAL_MAX));
+    return (uint16_t)constrain(mapped, 0, DYN_GOAL_MAX);
+}
+
+uint16_t elbow_to_goal_pos( double angle )
+{
+    constexpr double OFF_150 = M_PI * 5 / 6;
+
+    // dyn_angle = 150 - kinematic_elbow
+    angle = OFF_150 - angle;
     double norm = (angle - DYN_ANG_MIN) / (DYN_ANG_MAX - DYN_ANG_MIN);
     long mapped = lround(norm * (DYN_GOAL_MAX));
     return (uint16_t)constrain(mapped, 0, DYN_GOAL_MAX);

@@ -41,11 +41,11 @@ enum EspDrawSpeed
 
 uint16_t drawSpeedLUT[]
 {
-    0, 256, 512, 768, 1023
+    0, 64, 128, 256, 512
 };
 
 const int ESP_ID = 1;
-EspMode currentMode = MODE_IDLE;
+EspMode currentMode = MODE_IDLE; //MODE_IDLE;
 EspDrawSpeed currentSpeed = DSPEED_MAX;
 bool eStop = false;
 
@@ -68,7 +68,7 @@ AsyncServer server(LISTEN_PORT);
 
 // Drawing buffers
 PathQueueIterator path;
-CirclePathIterator path2(0,25,10);
+CirclePathIterator path2(0,39,1);
 
 struct arm_angles dockAngles;
 
@@ -89,12 +89,12 @@ void setPenDown( bool extended )
 
 void setAngles( const struct arm_angles& ang )
 {
-    uint16_t s = angle_to_goal_pos(ang.shoulder);
-    uint16_t e = angle_to_goal_pos(-ang.elbow);
+    uint16_t s = shoulder_to_goal_pos(ang.shoulder);
+    uint16_t e = elbow_to_goal_pos(ang.elbow);
+
+    Serial.printf("Angles: s = %f, e = %f\t", ang.shoulder, ang.elbow);
 
     write_synch_goal(s, e);
-
-    //Serial.printf("Servos set to: s = %d, e = %d\n", s, e);
 }
 
 void gotoIdle()
@@ -255,6 +255,7 @@ void setup()
     server.begin();
 
     digitalWrite(PIN_LED, LOW); // LED on
+    changeSetting(SETTING_SPEED, 2);
 
     sendStatus();
 
@@ -317,7 +318,7 @@ void loop()
     PathElement nextMove = path.moveNext();
     struct arm_angles ang;
     
-    Serial.printf("\nNext move: %d, %f, %f\t", nextMove.type, nextMove.x, nextMove.y);
+    Serial.printf("\nNext move: %d, %f, %f:  ", nextMove.type, nextMove.x, nextMove.y);
 
     switch( nextMove.type )
     {
