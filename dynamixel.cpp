@@ -130,7 +130,7 @@ uint16_t shoulder_to_goal_pos( double angle )
 
     // dyn_angle = 240 - kinematic_shoulder
     angle = OFF_240 - angle;
-    double norm = (angle - DYN_ANG_MIN) / (DYN_ANG_MAX - DYN_ANG_MIN);
+    double norm = angle / (DYN_ANG_MAX - DYN_ANG_MIN);
     long mapped = lround(norm * (DYN_GOAL_MAX));
     return (uint16_t)constrain(mapped, 0, DYN_GOAL_MAX);
 }
@@ -141,7 +141,7 @@ uint16_t elbow_to_goal_pos( double angle )
 
     // dyn_angle = 150 - kinematic_elbow
     angle = OFF_150 - angle;
-    double norm = (angle - DYN_ANG_MIN) / (DYN_ANG_MAX - DYN_ANG_MIN);
+    double norm = angle / (DYN_ANG_MAX - DYN_ANG_MIN);
     long mapped = lround(norm * (DYN_GOAL_MAX));
     return (uint16_t)constrain(mapped, 0, DYN_GOAL_MAX);
 }

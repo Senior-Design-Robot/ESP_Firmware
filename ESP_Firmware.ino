@@ -92,7 +92,7 @@ void setAngles( const struct arm_angles& ang )
     uint16_t s = shoulder_to_goal_pos(ang.shoulder);
     uint16_t e = elbow_to_goal_pos(ang.elbow);
 
-    Serial.printf("Angles: s = %f, e = %f\t", ang.shoulder, ang.elbow);
+    Serial.printf("Angles: s = %d, e = %d\t", s, e);
 
     write_synch_goal(s, e);
 }
@@ -101,7 +101,8 @@ void gotoIdle()
 {
     path.clear();
     setPenDown(false);
-    setAngles(dockAngles);
+    //setAngles(dockAngles);
+    write_torque_en(false);
     currentMode = MODE_IDLE;
 
     Serial.println("Start Idle Mode");
@@ -256,6 +257,10 @@ void setup()
 
     digitalWrite(PIN_LED, LOW); // LED on
     changeSetting(SETTING_SPEED, 2);
+
+    synch_write_value(PROP_GAIN, 1, 128, 128);
+    synch_write_value(DERIV_GAIN, 1, 32, 32);
+    synch_write_value(INTEG_GAIN, 1, 32, 32);
 
     sendStatus();
 
