@@ -256,11 +256,11 @@ void setup()
     server.begin();
 
     digitalWrite(PIN_LED, LOW); // LED on
-    changeSetting(SETTING_SPEED, 2);
+    changeSetting(SETTING_SPEED, 0);
 
     synch_write_value(PROP_GAIN, 1, 128, 128);
-    synch_write_value(DERIV_GAIN, 1, 32, 32);
-    synch_write_value(INTEG_GAIN, 1, 32, 32);
+    synch_write_value(DERIV_GAIN, 1, 64, 64);
+    synch_write_value(INTEG_GAIN, 1, 0, 0);
 
     sendStatus();
 
